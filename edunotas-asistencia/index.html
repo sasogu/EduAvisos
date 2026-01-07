@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EduNotas — Avisos</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="container header__row">
+        <h1 class="title">EduNotas — Avisos</h1>
+        <div class="controls">
+          <label class="field">
+            <span class="field__label">Clase</span>
+            <select id="classSelect" class="field__input" aria-label="Seleccionar clase"></select>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Nombre de clase</span>
+            <input id="className" class="field__input" type="text" placeholder="Ej: 1ºA" />
+          </label>
+          <button id="saveClassNameBtn" class="btn" type="button">Guardar nombre</button>
+
+          <button id="resetClassBtn" class="btn btn--secondary" type="button">Reiniciar marcas</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="panel" aria-labelledby="importTitle">
+        <div class="panel__header">
+          <h2 id="importTitle" class="panel__title">Importar alumnos (local)</h2>
+          <p class="panel__subtitle">Pega una lista (1 alumno por línea) o carga un archivo .txt/.csv. Se AÑADEN a la clase actual (no se borra lo existente). Más adelante adaptamos al formato exacto que me pases.</p>
+        </div>
+
+        <div class="import">
+          <label class="field field--grow">
+            <span class="field__label">Pegar lista</span>
+            <textarea id="importTextarea" class="field__input field__textarea" rows="6" placeholder="Ejemplo:
+Ana Pérez
+Juan López
+María García"></textarea>
+          </label>
+
+          <div class="import__actions">
+            <label class="field">
+              <span class="field__label">Archivo</span>
+              <input id="importFile" class="field__input" type="file" accept=".txt,.csv,text/plain,text/csv" />
+            </label>
+
+            <button id="importApplyBtn" class="btn" type="button">Importar en esta clase</button>
+            <button id="importClearBtn" class="btn btn--secondary" type="button">Limpiar caja</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="listTitle">
+        <div class="panel__header">
+          <div class="panel__headerRow">
+            <h2 id="listTitle" class="panel__title">Alumnos</h2>
+            <div class="listControls">
+              <label class="field field--inline">
+                <span class="field__label">Filtrar (≥ asistencias)</span>
+                <input id="minCount" class="field__input field__input--small" type="number" min="0" step="1" value="0" />
+              </label>
+              <div class="status" id="status"></div>
+            </div>
+          </div>
+          <p class="panel__subtitle">Haz click en un nombre para marcar/desmarcar una “X”.</p>
+        </div>
+
+        <div id="emptyState" class="empty" hidden>
+          Aún no hay alumnos en esta clase. Importa una lista arriba.
+        </div>
+
+        <ul id="studentList" class="list" aria-label="Lista de alumnos"></ul>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer__row">
+        <span class="muted">Datos guardados en tu navegador (localStorage).</span>
+      </div>
+    </footer>
+
+    <script src="app.js?v=20260107"></script>
+  </body>
+</html>

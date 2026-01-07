@@ -1,0 +1,395 @@
+/*
+  EduNotas — Asistencia (HTML5 + localStorage)
+  - 12 clases (configurable)
+  - Click en alumno: alterna marca "X"
+  - Importación local por texto/archivo
+*/
+
+const APP_KEY = "edunotas_asistencia_v1";
+
+/** @typedef {{ id: string, name: string, marked: boolean, count: number }} Student */
+/** @typedef {{ classes: Record<string, { name: string, students: Student[] }>, ui?: { minCountByClass?: Record<string, number> } }} AppState */
+
+function uid() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+/** @returns {AppState} */
+function defaultState() {
+  /** @type {Record<string, { name: string, students: Student[] }>} */
+  const classes = {};
+  for (let i = 1; i <= 12; i++) {
+    const id = `clase_${String(i).padStart(2, "0")}`;
+    classes[id] = { name: `Clase ${i}`, students: [] };
+  }
+  return { classes, ui: { minCountByClass: {} } };
+}
+
+/** @returns {AppState} */
+function loadState() {
+  const raw = localStorage.getItem(APP_KEY);
+  if (!raw) return defaultState();
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return defaultState();
+    if (!parsed.classes || typeof parsed.classes !== "object") return defaultState();
+    // Migración suave: añade campos nuevos si faltan.
+    /** @type {AppState} */
+    const migrated = parsed;
+    if (!migrated.ui) migrated.ui = { minCountByClass: {} };
+    if (!migrated.ui.minCountByClass) migrated.ui.minCountByClass = {};
+
+    for (const classId of Object.keys(migrated.classes)) {
+      const cls = migrated.classes[classId];
+      if (!cls || !Array.isArray(cls.students)) continue;
+      for (const s of cls.students) {
+        if (typeof s.count !== "number") s.count = 0;
+        if (typeof s.marked !== "boolean") s.marked = false;
+      }
+    }
+
+    return migrated;
+  } catch {
+    return defaultState();
+  }
+}
+
+/** @param {AppState} state */
+function saveState(state) {
+  localStorage.setItem(APP_KEY, JSON.stringify(state));
+}
+
+/**
+ * Normaliza texto importado.
+ * Acepta:
+ * - 1 alumno por línea
+ * - CSV simple: usa la primera columna antes de ';' o ','
+ */
+function parseNames(text) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      // CSV simple
+      const first = line.split(/[;,]/)[0].trim();
+      return first;
+    })
+    .filter(Boolean);
+}
+
+function dedupeNames(names) {
+  const seen = new Set();
+  /** @type {string[]} */
+  const out = [];
+  for (const n of names) {
+    const key = n.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(n);
+  }
+  return out;
+}
+
+function el(id) {
+  const node = document.getElementById(id);
+  if (!node) throw new Error(`Missing element: ${id}`);
+  return node;
+}
+
+const classSelect = /** @type {HTMLSelectElement} */ (el("classSelect"));
+const classNameInput = /** @type {HTMLInputElement} */ (el("className"));
+const saveClassNameBtn = /** @type {HTMLButtonElement} */ (el("saveClassNameBtn"));
+const resetClassBtn = /** @type {HTMLButtonElement} */ (el("resetClassBtn"));
+const importTextarea = /** @type {HTMLTextAreaElement} */ (el("importTextarea"));
+const importFile = /** @type {HTMLInputElement} */ (el("importFile"));
+const importApplyBtn = /** @type {HTMLButtonElement} */ (el("importApplyBtn"));
+const importClearBtn = /** @type {HTMLButtonElement} */ (el("importClearBtn"));
+const studentList = /** @type {HTMLUListElement} */ (el("studentList"));
+const emptyState = /** @type {HTMLDivElement} */ (el("emptyState"));
+const status = /** @type {HTMLDivElement} */ (el("status"));
+const minCountInput = /** @type {HTMLInputElement} */ (el("minCount"));
+
+let state = loadState();
+let selectedClassId = Object.keys(state.classes)[0] ?? "clase_01";
+
+function getMinCountForSelectedClass() {
+  const n = state.ui?.minCountByClass?.[selectedClassId];
+  return typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+function setMinCountForSelectedClass(value) {
+  const n = Math.max(0, Math.floor(Number(value) || 0));
+  if (!state.ui) state.ui = { minCountByClass: {} };
+  if (!state.ui.minCountByClass) state.ui.minCountByClass = {};
+  state.ui.minCountByClass[selectedClassId] = n;
+  saveState(state);
+}
+
+function setStatus(text) {
+  status.textContent = text;
+}
+
+function setTransientStatus(text, ms = 2500) {
+  setStatus(text);
+  window.clearTimeout(setTransientStatus._t);
+  setTransientStatus._t = window.setTimeout(() => setStatus(""), ms);
+}
+setTransientStatus._t = 0;
+
+function getSelectedClass() {
+  const cls = state.classes[selectedClassId];
+  if (!cls) {
+    // Si cambió la estructura, vuelve al default.
+    state = defaultState();
+    saveState(state);
+    selectedClassId = Object.keys(state.classes)[0] ?? "clase_01";
+    return state.classes[selectedClassId];
+  }
+  return cls;
+}
+
+function renderClassSelect() {
+  const ids = Object.keys(state.classes);
+  classSelect.innerHTML = "";
+  for (const id of ids) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = state.classes[id].name;
+    classSelect.appendChild(opt);
+  }
+  classSelect.value = selectedClassId;
+}
+
+function renderClassNameInput() {
+  const cls = getSelectedClass();
+  classNameInput.value = cls.name;
+}
+
+function saveClassName() {
+  const cls = getSelectedClass();
+  const next = (classNameInput.value ?? "").trim();
+  if (!next) {
+    alert("El nombre de la clase no puede estar vacío.");
+    classNameInput.value = cls.name;
+    return;
+  }
+  cls.name = next;
+  saveState(state);
+  renderClassSelect();
+  renderClassNameInput();
+  setStatus("Nombre de clase guardado");
+}
+
+function renderStudents() {
+  const cls = getSelectedClass();
+  const total = cls.students.length;
+  const marked = cls.students.filter((s) => s.marked).length;
+  const minCount = getMinCountForSelectedClass();
+  const visibleStudents = cls.students.filter((s) => (s.count ?? 0) >= minCount);
+  const visibleTotal = visibleStudents.length;
+
+  if (!total) {
+    setStatus("");
+  } else if (minCount > 0) {
+    setStatus(`${marked}/${total} marcados · mostrando ${visibleTotal}/${total} (≥${minCount})`);
+  } else {
+    setStatus(`${marked}/${total} marcados`);
+  }
+
+  studentList.innerHTML = "";
+  emptyState.hidden = total !== 0;
+
+  if (total !== 0 && visibleTotal === 0) {
+    // Estado vacío por filtro
+    emptyState.hidden = false;
+    emptyState.textContent = `No hay alumnos con asistencias ≥ ${minCount}. Baja el filtro o suma asistencias.`;
+  } else {
+    emptyState.textContent = "Aún no hay alumnos en esta clase. Importa una lista arriba.";
+  }
+
+  for (const student of visibleStudents) {
+    const li = document.createElement("li");
+    li.className = "item";
+
+    const left = document.createElement("span");
+    left.className = "left";
+
+    const nameBtn = document.createElement("button");
+    nameBtn.type = "button";
+    nameBtn.className = "nameBtn";
+    nameBtn.setAttribute("aria-label", `Sumar +1 a ${student.name}`);
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = student.name;
+
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = student.marked ? "Marcado" : "Sin marcar";
+
+    nameBtn.addEventListener("click", () => {
+      // Un click en el nombre siempre suma +1 (no desmarca).
+      student.count = (student.count ?? 0) + 1;
+      saveState(state);
+      renderStudents();
+    });
+
+    nameBtn.appendChild(name);
+    nameBtn.appendChild(meta);
+    left.appendChild(nameBtn);
+
+    const right = document.createElement("span");
+    right.className = "right";
+
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = String(student.count ?? 0);
+
+    const markBtn = document.createElement("button");
+    markBtn.type = "button";
+    markBtn.className = student.marked ? "badge badge--marked" : "badge";
+    markBtn.textContent = student.marked ? "X" : "";
+    markBtn.setAttribute(
+      "aria-label",
+      student.marked ? `Desmarcar: ${student.name}` : `Marcar: ${student.name}`
+    );
+
+    markBtn.addEventListener("click", () => {
+      const wasMarked = student.marked;
+      student.marked = !student.marked;
+      // Cuenta +1 solo al pasar a marcado.
+      if (!wasMarked && student.marked) {
+        student.count = (student.count ?? 0) + 1;
+      }
+      saveState(state);
+      renderStudents();
+    });
+
+    right.appendChild(count);
+    right.appendChild(markBtn);
+
+    li.appendChild(left);
+    li.appendChild(right);
+    studentList.appendChild(li);
+  }
+}
+
+function resetMarksForSelectedClass() {
+  const cls = getSelectedClass();
+  for (const s of cls.students) s.marked = false;
+  saveState(state);
+  renderStudents();
+}
+
+function applyImportToSelectedClass(names) {
+  const cls = getSelectedClass();
+  const cleaned = dedupeNames(names.map((n) => n.trim()).filter(Boolean));
+
+  const existingByName = new Map(
+    cls.students.map((s) => [s.name.toLocaleLowerCase(), s])
+  );
+
+  let added = 0;
+  let skipped = 0;
+
+  for (const name of cleaned) {
+    const key = name.toLocaleLowerCase();
+    if (existingByName.has(key)) {
+      skipped++;
+      continue;
+    }
+    cls.students.push({ id: uid(), name, marked: false, count: 0 });
+    existingByName.set(key, cls.students[cls.students.length - 1]);
+    added++;
+  }
+
+  saveState(state);
+  renderStudents();
+
+  return { cleanedCount: cleaned.length, added, skipped };
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsText(file);
+  });
+}
+
+// Eventos
+classSelect.addEventListener("change", () => {
+  selectedClassId = classSelect.value;
+  minCountInput.value = String(getMinCountForSelectedClass());
+  renderClassNameInput();
+  renderStudents();
+});
+
+saveClassNameBtn.addEventListener("click", () => {
+  saveClassName();
+});
+
+classNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    saveClassName();
+  }
+});
+
+classNameInput.addEventListener("blur", () => {
+  // Guardado suave al salir del campo (solo si cambia).
+  const cls = getSelectedClass();
+  const next = (classNameInput.value ?? "").trim();
+  if (next && next !== cls.name) saveClassName();
+});
+
+minCountInput.addEventListener("input", () => {
+  setMinCountForSelectedClass(minCountInput.value);
+  renderStudents();
+});
+
+resetClassBtn.addEventListener("click", () => {
+  const cls = getSelectedClass();
+  if (!cls.students.length) return;
+  const ok = confirm(`¿Reiniciar marcas de ${cls.name}?`);
+  if (!ok) return;
+  resetMarksForSelectedClass();
+});
+
+importClearBtn.addEventListener("click", () => {
+  importTextarea.value = "";
+  importFile.value = "";
+});
+
+importApplyBtn.addEventListener("click", async () => {
+  try {
+    let text = importTextarea.value ?? "";
+    const file = importFile.files?.[0];
+    if (!text.trim() && file) {
+      text = await readFileAsText(file);
+    }
+
+    const names = parseNames(text);
+    if (!names.length) {
+      setTransientStatus("No se detectaron nombres para importar");
+      return;
+    }
+
+    const cls = getSelectedClass();
+    const result = applyImportToSelectedClass(names);
+    setTransientStatus(
+      `Importados: ${result.added} nuevos · ${result.skipped} duplicados · ${cls.name}`
+    );
+  } catch (e) {
+    setTransientStatus(e instanceof Error ? e.message : "Error al importar", 4000);
+  }
+});
+
+// Init
+renderClassSelect();
+minCountInput.value = String(getMinCountForSelectedClass());
+renderClassNameInput();
+renderStudents();
