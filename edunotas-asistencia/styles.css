@@ -268,6 +268,10 @@ body {
   background: rgba(255, 255, 255, 0.14);
 }
 
+.miniBtn--danger {
+  background: var(--danger);
+}
+
 .badge {
   width: 28px;
   height: 28px;

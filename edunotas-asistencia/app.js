@@ -271,8 +271,24 @@ function renderStudents() {
       renderStudents();
     });
 
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "miniBtn miniBtn--danger";
+    deleteBtn.textContent = "Eliminar";
+    deleteBtn.setAttribute("aria-label", `Eliminar alumno: ${student.name}`);
+
+    deleteBtn.addEventListener("click", () => {
+      const cls = getSelectedClass();
+      const ok = confirm(`¿Eliminar a ${student.name} de ${cls.name}?`);
+      if (!ok) return;
+      cls.students = cls.students.filter((s) => s.id !== student.id);
+      saveState(state);
+      renderStudents();
+    });
+
     right.appendChild(count);
     right.appendChild(markBtn);
+    right.appendChild(deleteBtn);
 
     li.appendChild(left);
     li.appendChild(right);
