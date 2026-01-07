@@ -106,10 +106,14 @@ const importTextarea = /** @type {HTMLTextAreaElement} */ (el("importTextarea"))
 const importFile = /** @type {HTMLInputElement} */ (el("importFile"));
 const importApplyBtn = /** @type {HTMLButtonElement} */ (el("importApplyBtn"));
 const importClearBtn = /** @type {HTMLButtonElement} */ (el("importClearBtn"));
+const openImportBtn = /** @type {HTMLButtonElement} */ (el("openImportBtn"));
+const importDialog = /** @type {HTMLDialogElement} */ (el("importDialog"));
+const closeImportBtn = /** @type {HTMLButtonElement} */ (el("closeImportBtn"));
 const studentList = /** @type {HTMLUListElement} */ (el("studentList"));
 const emptyState = /** @type {HTMLDivElement} */ (el("emptyState"));
 const status = /** @type {HTMLDivElement} */ (el("status"));
 const minCountInput = /** @type {HTMLInputElement} */ (el("minCount"));
+const clearFilterBtn = /** @type {HTMLButtonElement} */ (el("clearFilterBtn"));
 
 let state = loadState();
 let selectedClassId = Object.keys(state.classes)[0] ?? "clase_01";
@@ -278,7 +282,10 @@ function renderStudents() {
 
 function resetMarksForSelectedClass() {
   const cls = getSelectedClass();
-  for (const s of cls.students) s.marked = false;
+  for (const s of cls.students) {
+    s.marked = false;
+    s.count = 0;
+  }
   saveState(state);
   renderStudents();
 }
@@ -321,6 +328,28 @@ function readFileAsText(file) {
 }
 
 // Eventos
+openImportBtn.addEventListener("click", () => {
+  if (typeof importDialog.showModal === "function") {
+    importDialog.showModal();
+  } else {
+    // Fallback muy simple si el navegador no soporta <dialog>
+    importDialog.setAttribute("open", "");
+  }
+});
+
+closeImportBtn.addEventListener("click", () => {
+  importDialog.close?.();
+  importDialog.removeAttribute("open");
+});
+
+importDialog.addEventListener("click", (e) => {
+  // Cerrar al pinchar fuera del cuadro (backdrop)
+  if (e.target === importDialog) {
+    importDialog.close?.();
+    importDialog.removeAttribute("open");
+  }
+});
+
 classSelect.addEventListener("change", () => {
   selectedClassId = classSelect.value;
   minCountInput.value = String(getMinCountForSelectedClass());
@@ -348,6 +377,12 @@ classNameInput.addEventListener("blur", () => {
 
 minCountInput.addEventListener("input", () => {
   setMinCountForSelectedClass(minCountInput.value);
+  renderStudents();
+});
+
+clearFilterBtn.addEventListener("click", () => {
+  minCountInput.value = "0";
+  setMinCountForSelectedClass(0);
   renderStudents();
 });
 
@@ -383,6 +418,10 @@ importApplyBtn.addEventListener("click", async () => {
     setTransientStatus(
       `Importados: ${result.added} nuevos · ${result.skipped} duplicados · ${cls.name}`
     );
+
+    // Cierra el modal tras importar
+    importDialog.close?.();
+    importDialog.removeAttribute("open");
   } catch (e) {
     setTransientStatus(e instanceof Error ? e.message : "Error al importar", 4000);
   }

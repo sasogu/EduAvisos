@@ -30,14 +30,26 @@
     <main class="container">
       <section class="panel" aria-labelledby="importTitle">
         <div class="panel__header">
-          <h2 id="importTitle" class="panel__title">Importar alumnos (local)</h2>
-          <p class="panel__subtitle">Pega una lista (1 alumno por línea) o carga un archivo .txt/.csv. Se AÑADEN a la clase actual (no se borra lo existente). Más adelante adaptamos al formato exacto que me pases.</p>
+          <h2 id="importTitle" class="panel__title">Importar alumnos</h2>
+          <p class="panel__subtitle">Importación local: añade alumnos nuevos a la clase actual (si el nombre ya existe, se queda como está).</p>
+          <div class="panel__actions">
+            <button id="openImportBtn" class="btn" type="button">Abrir importador</button>
+          </div>
         </div>
+      </section>
+
+      <dialog id="importDialog" class="modal" aria-labelledby="importDialogTitle">
+        <div class="modal__header">
+          <h3 id="importDialogTitle" class="modal__title">Importar alumnos (local)</h3>
+          <button id="closeImportBtn" class="btn btn--secondary" type="button">Cerrar</button>
+        </div>
+
+        <p class="modal__subtitle">Pega una lista (1 alumno por línea) o carga un archivo .txt/.csv. Se AÑADEN a la clase actual (no se borra lo existente).</p>
 
         <div class="import">
           <label class="field field--grow">
             <span class="field__label">Pegar lista</span>
-            <textarea id="importTextarea" class="field__input field__textarea" rows="6" placeholder="Ejemplo:
+            <textarea id="importTextarea" class="field__input field__textarea" rows="8" placeholder="Ejemplo:
 Ana Pérez
 Juan López
 María García"></textarea>
@@ -53,7 +65,7 @@ María García"></textarea>
             <button id="importClearBtn" class="btn btn--secondary" type="button">Limpiar caja</button>
           </div>
         </div>
-      </section>
+      </dialog>
 
       <section class="panel" aria-labelledby="listTitle">
         <div class="panel__header">
@@ -64,10 +76,11 @@ María García"></textarea>
                 <span class="field__label">Filtrar (≥ asistencias)</span>
                 <input id="minCount" class="field__input field__input--small" type="number" min="0" step="1" value="0" />
               </label>
+              <button id="clearFilterBtn" class="btn btn--secondary" type="button">Limpiar filtro</button>
               <div class="status" id="status"></div>
             </div>
           </div>
-          <p class="panel__subtitle">Haz click en un nombre para marcar/desmarcar una “X”.</p>
+          <p class="panel__subtitle">Click en el nombre: suma +1. Botón X: marca/desmarca (al marcar también suma +1).</p>
         </div>
 
         <div id="emptyState" class="empty" hidden>

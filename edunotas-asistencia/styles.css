@@ -69,6 +69,10 @@ body {
   padding: 14px 14px 0 14px;
 }
 
+.panel__actions {
+  padding-bottom: 14px;
+}
+
 .panel__headerRow {
   display: flex;
   align-items: baseline;
@@ -160,6 +164,38 @@ body {
   gap: 12px;
   align-items: stretch;
   flex-wrap: wrap;
+}
+
+.modal {
+  width: min(920px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(17, 26, 51, 0.95);
+  color: var(--text);
+}
+
+.modal::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.modal__title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.modal__subtitle {
+  margin: 0 0 12px 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .import__actions {
