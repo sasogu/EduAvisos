@@ -216,6 +216,126 @@ function parseNames(text) {
     .filter(Boolean);
 }
 
+/**
+ * Carga pdf.js (CDN o local) y lo deja listo para usar.
+ * @returns {Promise<any>}
+ */
+async function ensurePdfJsLoaded() {
+  // @ts-ignore
+  if (window.pdfjsLib) return window.pdfjsLib;
+
+  const sources = [
+    {
+      name: "cdnjs",
+      script: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+      worker: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
+    },
+    {
+      name: "local",
+      script: "vendor/pdf.min.js",
+      worker: "vendor/pdf.worker.min.js",
+    },
+  ];
+
+  /** @param {string} url */
+  function loadScript(url) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = url;
+      s.async = true;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error(`No se pudo cargar pdf.js: ${url}`));
+      document.head.appendChild(s);
+    });
+  }
+
+  let lastError;
+  for (const src of sources) {
+    try {
+      await loadScript(src.script);
+      // @ts-ignore
+      const pdfjsLib = window.pdfjsLib;
+      if (!pdfjsLib) throw new Error("pdf.js cargo pero no expuso pdfjsLib");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = src.worker;
+      return pdfjsLib;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    "No se pudo cargar pdf.js. Revisa la conexion o coloca pdf.min.js y pdf.worker.min.js en /vendor."
+  );
+}
+
+/** @param {File} file */
+function readFileAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    r.onload = () => resolve(r.result);
+    r.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * Extrae texto de un PDF (todas las páginas).
+ * @param {File} file
+ * @returns {Promise<string>}
+ */
+async function extractTextFromPdf(file) {
+  const pdfjsLib = await ensurePdfJsLoaded();
+  const buf = /** @type {ArrayBuffer} */ (await readFileAsArrayBuffer(file));
+  const loadingTask = pdfjsLib.getDocument({ data: buf });
+  const pdf = await loadingTask.promise;
+
+  const parts = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const strings = content.items
+      .map((it) => (typeof it?.str === "string" ? it.str : ""))
+      .filter(Boolean);
+    parts.push(strings.join("\n"));
+  }
+  return parts.join("\n");
+}
+
+/**
+ * Extracción de nombres desde el texto del PDF.
+ * @param {string} text
+ */
+function parseNamesFromPdfText(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  /** @type {string[]} */
+  const candidates = [];
+
+  // 1) "Apellido, Nombre" -> "Nombre Apellido"
+  for (const l of lines) {
+    if (!l.includes(",")) continue;
+    const parts = l.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length < 2) continue;
+    const name = `${parts[1]} ${parts[0]}`.replace(/\s+/g, " ").trim();
+    if (name) candidates.push(name);
+  }
+
+  // 2) "Nombre Apellido" (2-4 palabras con inicial mayúscula)
+  const nameWord = "[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+";
+  const re = new RegExp(`^${nameWord}(?:[ \\-]${nameWord}){1,3}$`);
+  for (let l of lines) {
+    l = l.replace(/[•·\t]+/g, " ");
+    l = l.replace(/\s*[-–—].*$/, "");
+    l = l.replace(/\(.*?\)$/, "").trim();
+    if (re.test(l)) candidates.push(l);
+  }
+
+  return dedupeNames(candidates);
+}
+
 function dedupeNames(names) {
   const seen = new Set();
   /** @type {string[]} */
@@ -243,6 +363,7 @@ const timerPlayBtn = /** @type {HTMLButtonElement} */ (el("timerPlayBtn"));
 const timerPauseBtn = /** @type {HTMLButtonElement} */ (el("timerPauseBtn"));
 const importTextarea = /** @type {HTMLTextAreaElement} */ (el("importTextarea"));
 const importFile = /** @type {HTMLInputElement} */ (el("importFile"));
+const importPdf = /** @type {HTMLInputElement} */ (el("importPdf"));
 const importApplyBtn = /** @type {HTMLButtonElement} */ (el("importApplyBtn"));
 const importClearBtn = /** @type {HTMLButtonElement} */ (el("importClearBtn"));
 const openImportBtn = /** @type {HTMLButtonElement} */ (el("openImportBtn"));
@@ -817,17 +938,28 @@ resetClassBtn.addEventListener("click", () => {
 importClearBtn.addEventListener("click", () => {
   importTextarea.value = "";
   importFile.value = "";
+  importPdf.value = "";
 });
 
 importApplyBtn.addEventListener("click", async () => {
   try {
     let text = importTextarea.value ?? "";
     const file = importFile.files?.[0];
+    const pdf = importPdf.files?.[0];
     if (!text.trim() && file) {
       text = await readFileAsText(file);
     }
 
-    const names = parseNames(text);
+    /** @type {string[]} */
+    let names = [];
+    if (pdf) {
+      // Prioridad al PDF si se ha seleccionado.
+      setTransientStatus("Leyendo PDF…", 5000);
+      const pdfText = await extractTextFromPdf(pdf);
+      names = parseNamesFromPdfText(pdfText);
+    } else {
+      names = parseNames(text);
+    }
     if (!names.length) {
       setTransientStatus("No se detectaron nombres para importar");
       return;
