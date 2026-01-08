@@ -1,6 +1,6 @@
-# EduNotas — Avisos (HTML5)
+# EduAvisos (HTML5)
 
-App local para tener la lista de alumnos por clase y llevar contadores de avisos negativos y positivos por alumno.
+App local para tener la lista de alumnos por clase y llevar contadores de avisos por alumno.
 
 ## Cómo usar
 
@@ -26,6 +26,20 @@ App local para tener la lista de alumnos por clase y llevar contadores de avisos
   - "Minutos por ☹︎"
   - "Minutos por 🙂"
 
+## Copia de seguridad (backup)
+
+En ⚙︎ → **Administración** puedes:
+
+- **Exportar copia (.json)**: descarga una copia completa del estado.
+- **Importar copia (.json)**: restaura esa copia (reemplaza todos los datos actuales).
+
+La copia incluye:
+
+- Todas las clases y sus alumnos.
+- Contadores ☹︎ y 🙂.
+- Configuración (filtros por clase y minutos por punto).
+- **Histórico por alumno** (eventos de ☹︎ y 🙂 con fecha/hora).
+
 ## Datos
 
 - Se guardan en `localStorage` del navegador.
@@ -34,6 +48,7 @@ App local para tener la lista de alumnos por clase y llevar contadores de avisos
 ## Importación
 
 Por ahora acepta:
+
 - 1 nombre por línea
 - CSV simple: toma la primera columna (antes de `,` o `;`).
 
