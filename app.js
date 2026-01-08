@@ -271,6 +271,37 @@ function renderStudents() {
       renderStudents();
     });
 
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "miniBtn";
+    editBtn.textContent = "Editar";
+    editBtn.setAttribute("aria-label", `Editar nombre: ${student.name}`);
+
+    editBtn.addEventListener("click", () => {
+      const cls = getSelectedClass();
+      const next = prompt(`Nuevo nombre para ${student.name}:`, student.name);
+      if (next === null) return;
+      const trimmed = next.trim();
+      if (!trimmed) {
+        alert("El nombre no puede estar vacío.");
+        return;
+      }
+
+      const key = trimmed.toLocaleLowerCase();
+      const clash = cls.students.some(
+        (s) => s.id !== student.id && (s.name ?? "").toLocaleLowerCase() === key
+      );
+      if (clash) {
+        alert("Ya existe un alumno con ese nombre en esta clase.");
+        return;
+      }
+
+      student.name = trimmed;
+      saveState(state);
+      renderStudents();
+      setTransientStatus("Nombre actualizado");
+    });
+
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "miniBtn miniBtn--danger";
@@ -288,6 +319,7 @@ function renderStudents() {
 
     right.appendChild(count);
     right.appendChild(markBtn);
+    right.appendChild(editBtn);
     right.appendChild(deleteBtn);
 
     li.appendChild(left);
