@@ -71,6 +71,21 @@
           </div>
         </div>
 
+        <p class="modal__subtitle">Administración: exporta una copia de seguridad de tus datos (todas las clases) o impórtala para restaurar.</p>
+
+        <div class="config">
+          <div class="config__row">
+            <button id="exportBackupBtn" class="btn" type="button">Exportar copia (.json)</button>
+
+            <label class="field">
+              <span class="field__label">Importar copia (.json)</span>
+              <input id="importBackupFile" class="field__input" type="file" accept="application/json,.json" />
+            </label>
+
+            <button id="importBackupBtn" class="btn btn--secondary" type="button">Importar copia</button>
+          </div>
+        </div>
+
         <p class="modal__subtitle">Importa alumnos: pega una lista (1 por línea) o carga un archivo .txt/.csv. Se AÑADEN a la clase actual (no se borra lo existente).</p>
 
         <div class="import">

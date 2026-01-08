@@ -369,6 +369,9 @@ const importClearBtn = /** @type {HTMLButtonElement} */ (el("importClearBtn"));
 const openImportBtn = /** @type {HTMLButtonElement} */ (el("openImportBtn"));
 const importDialog = /** @type {HTMLDialogElement} */ (el("importDialog"));
 const closeImportBtn = /** @type {HTMLButtonElement} */ (el("closeImportBtn"));
+const exportBackupBtn = /** @type {HTMLButtonElement} */ (el("exportBackupBtn"));
+const importBackupFile = /** @type {HTMLInputElement} */ (el("importBackupFile"));
+const importBackupBtn = /** @type {HTMLButtonElement} */ (el("importBackupBtn"));
 const studentList = /** @type {HTMLUListElement} */ (el("studentList"));
 const emptyState = /** @type {HTMLDivElement} */ (el("emptyState"));
 const status = /** @type {HTMLDivElement} */ (el("status"));
@@ -409,6 +412,93 @@ function setMinPositiveForSelectedClass(value) {
 
 function setStatus(text) {
   status.textContent = text;
+}
+
+/**
+ * Descarga un texto como archivo desde el navegador.
+ * @param {string} filename
+ * @param {string} content
+ * @param {string} mime
+ */
+function downloadTextFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function exportBackup() {
+  const raw = localStorage.getItem(APP_KEY);
+  const payload = {
+    app: "EduAvisos",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    appKey: APP_KEY,
+    state: raw ? JSON.parse(raw) : defaultState(),
+  };
+  const json = JSON.stringify(payload, null, 2);
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  downloadTextFile(`eduavisos-backup-${ts}.json`, json, "application/json;charset=utf-8");
+  setTransientStatus("Copia exportada");
+}
+
+/** @param {any} payload */
+function extractStateFromBackupPayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  // Formato recomendado: { state: AppState }
+  if (payload.state && typeof payload.state === "object") return payload.state;
+  // Compatibilidad: si el usuario importa directamente el AppState
+  if (payload.classes && typeof payload.classes === "object") return payload;
+  return null;
+}
+
+async function importBackupFromUi() {
+  const file = importBackupFile.files?.[0];
+  if (!file) {
+    setTransientStatus("Selecciona un .json primero");
+    return;
+  }
+
+  const ok = confirm(
+    "Esto reemplazará TODOS tus datos (todas las clases) por la copia importada. ¿Continuar?"
+  );
+  if (!ok) return;
+
+  const text = await readFileAsText(file);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    setTransientStatus("El archivo no es JSON válido", 4000);
+    return;
+  }
+
+  const nextState = extractStateFromBackupPayload(parsed);
+  if (!nextState) {
+    setTransientStatus("Formato de copia no reconocido", 4000);
+    return;
+  }
+
+  // Guardar y recargar UI
+  localStorage.setItem(APP_KEY, JSON.stringify(nextState));
+  state = loadState();
+  selectedClassId = Object.keys(state.classes)[0] ?? "clase_01";
+  renderClassSelect();
+  renderClassNameInput();
+  syncTimerControls();
+  negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
+  posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
+  minCountInput.value = String(getMinCountForSelectedClass());
+  minPositiveInput.value = String(getMinPositiveForSelectedClass());
+  renderStudents();
+
+  importBackupFile.value = "";
+  setTransientStatus("Copia importada");
 }
 
 function setTransientStatus(text, ms = 2500) {
@@ -971,6 +1061,25 @@ importApplyBtn.addEventListener("click", async () => {
       `Importados: ${result.added} nuevos · ${result.skipped} duplicados · ${cls.name}`
     );
 
+    // Cierra el modal tras importar
+    importDialog.close?.();
+    importDialog.removeAttribute("open");
+  } catch (e) {
+    setTransientStatus(e instanceof Error ? e.message : "Error al importar", 4000);
+  }
+});
+
+exportBackupBtn.addEventListener("click", () => {
+  try {
+    exportBackup();
+  } catch (e) {
+    setTransientStatus(e instanceof Error ? e.message : "Error al exportar", 4000);
+  }
+});
+
+importBackupBtn.addEventListener("click", async () => {
+  try {
+    await importBackupFromUi();
     // Cierra el modal tras importar
     importDialog.close?.();
     importDialog.removeAttribute("open");
