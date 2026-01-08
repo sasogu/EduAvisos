@@ -53,3 +53,7 @@ Por ahora acepta:
 - CSV simple: toma la primera columna (antes de `,` o `;`).
 
 Cuando me pases el formato definitivo (archivo/columnas/separadores), adapto el parser.
+
+## Licencia
+
+MIT. Ver `LICENSE`.
