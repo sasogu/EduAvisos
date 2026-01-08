@@ -114,10 +114,47 @@ María García"></textarea>
         </div>
       </dialog>
 
+      <dialog id="timerDialog" class="modal" aria-labelledby="timerDialogTitle">
+        <div class="modal__header">
+          <h3 id="timerDialogTitle" class="modal__title">Tiempo pendiente (☹︎)</h3>
+          <button id="closeTimerBtn" class="btn btn--secondary" type="button">Cerrar</button>
+        </div>
+
+        <p class="modal__subtitle">Alumnos con tiempo pendiente en la clase actual. La cuenta atrás se actualiza en vivo mientras el temporizador está en Play.</p>
+
+        <ul id="timerStudentList" class="list" aria-label="Alumnos con tiempo pendiente"></ul>
+        <div id="timerEmpty" class="empty" hidden>No hay alumnos con tiempo pendiente en esta clase.</div>
+      </dialog>
+
+      <dialog id="historyDialog" class="modal" aria-labelledby="historyDialogTitle">
+        <div class="modal__header">
+          <h3 id="historyDialogTitle" class="modal__title">Histórico</h3>
+          <button id="closeHistoryBtn" class="btn btn--secondary" type="button">Cerrar</button>
+        </div>
+
+        <p id="historySubtitle" class="modal__subtitle"></p>
+
+        <ul id="historyList" class="list" aria-label="Histórico del alumno"></ul>
+        <div id="historyEmpty" class="empty" hidden>Este alumno aún no tiene eventos en el histórico.</div>
+      </dialog>
+
+      <dialog id="classHistoryDialog" class="modal" aria-labelledby="classHistoryDialogTitle">
+        <div class="modal__header">
+          <h3 id="classHistoryDialogTitle" class="modal__title">Histórico de la clase</h3>
+          <button id="closeClassHistoryBtn" class="btn btn--secondary" type="button">Cerrar</button>
+        </div>
+
+        <p id="classHistorySubtitle" class="modal__subtitle">Resumen por alumno (totales de ☹︎ y 🙂).</p>
+
+        <ul id="classHistoryList" class="list" aria-label="Resumen de la clase"></ul>
+        <div id="classHistoryEmpty" class="empty" hidden>Esta clase aún no tiene puntos en el histórico.</div>
+      </dialog>
+
       <section class="panel" aria-labelledby="listTitle">
         <div class="panel__header">
           <div class="panel__headerRow">
             <h2 id="listTitle" class="panel__title">Alumnos</h2>
+            <button id="openClassHistoryBtn" class="btn btn--secondary" type="button">Histórico de la clase</button>
             <div class="listControls">
               <label class="field field--inline">
                 <span class="field__label">☹︎ ≥</span>

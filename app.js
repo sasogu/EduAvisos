@@ -8,7 +8,8 @@
 
 const APP_KEY = "edunotas_asistencia_v1";
 
-/** @typedef {{ id: string, name: string, marked?: boolean, count: number, positiveCount?: number, negExpiresAt?: number, negSpentMs?: number }} Student */
+/** @typedef {{ ts: number, type: "neg"|"pos", delta: number }} StudentEvent */
+/** @typedef {{ id: string, name: string, marked?: boolean, count: number, positiveCount?: number, negExpiresAt?: number, negSpentMs?: number, history?: StudentEvent[] }} Student */
 /** @typedef {{ classes: Record<string, { name: string, students: Student[] }>, ui?: { minCountByClass?: Record<string, number>, minPositiveByClass?: Record<string, number>, timerRunning?: boolean, timerFrozenAt?: number, negMinutesPerPoint?: number, posMinutesPerPoint?: number, lastTickNow?: number } }} AppState */
 
 const DEFAULT_NEG_MINUTES_PER_POINT = 5;
@@ -77,6 +78,7 @@ function loadState() {
         if (typeof s.positiveCount !== "number") s.positiveCount = 0;
         if (typeof s.marked !== "boolean") s.marked = false;
         if (typeof s.negSpentMs !== "number" || !Number.isFinite(s.negSpentMs) || s.negSpentMs < 0) s.negSpentMs = 0;
+        if (!Array.isArray(s.history)) s.history = [];
 
         // Migración: si existe negExpiresAt (modelo antiguo), conviértelo a negSpentMs aproximado.
         if (typeof s.negExpiresAt === "number" && Number.isFinite(s.negExpiresAt) && (s.count ?? 0) > 0) {
@@ -95,6 +97,12 @@ function loadState() {
   } catch {
     return defaultState();
   }
+}
+
+/** @param {Student} student @param {StudentEvent["type"]} type */
+function pushHistory(student, type) {
+  if (!Array.isArray(student.history)) student.history = [];
+  student.history.push({ ts: Date.now(), type, delta: 1 });
 }
 
 function getNegMsPerPoint() {
@@ -146,6 +154,8 @@ function addNegativePoint(student) {
   const now = getEffectiveNow();
   const prev = student.count ?? 0;
   student.count = prev + 1;
+
+  pushHistory(student, "neg");
 
   // Si empieza una "racha" nueva de negativos, reinicia el tiempo consumido.
   if (prev <= 0) {
@@ -372,6 +382,21 @@ const closeImportBtn = /** @type {HTMLButtonElement} */ (el("closeImportBtn"));
 const exportBackupBtn = /** @type {HTMLButtonElement} */ (el("exportBackupBtn"));
 const importBackupFile = /** @type {HTMLInputElement} */ (el("importBackupFile"));
 const importBackupBtn = /** @type {HTMLButtonElement} */ (el("importBackupBtn"));
+const timerDialog = /** @type {HTMLDialogElement} */ (el("timerDialog"));
+const closeTimerBtn = /** @type {HTMLButtonElement} */ (el("closeTimerBtn"));
+const timerStudentList = /** @type {HTMLUListElement} */ (el("timerStudentList"));
+const timerEmpty = /** @type {HTMLDivElement} */ (el("timerEmpty"));
+const historyDialog = /** @type {HTMLDialogElement} */ (el("historyDialog"));
+const closeHistoryBtn = /** @type {HTMLButtonElement} */ (el("closeHistoryBtn"));
+const historySubtitle = /** @type {HTMLParagraphElement} */ (el("historySubtitle"));
+const historyList = /** @type {HTMLUListElement} */ (el("historyList"));
+const historyEmpty = /** @type {HTMLDivElement} */ (el("historyEmpty"));
+const openClassHistoryBtn = /** @type {HTMLButtonElement} */ (el("openClassHistoryBtn"));
+const classHistoryDialog = /** @type {HTMLDialogElement} */ (el("classHistoryDialog"));
+const closeClassHistoryBtn = /** @type {HTMLButtonElement} */ (el("closeClassHistoryBtn"));
+const classHistorySubtitle = /** @type {HTMLParagraphElement} */ (el("classHistorySubtitle"));
+const classHistoryList = /** @type {HTMLUListElement} */ (el("classHistoryList"));
+const classHistoryEmpty = /** @type {HTMLDivElement} */ (el("classHistoryEmpty"));
 const studentList = /** @type {HTMLUListElement} */ (el("studentList"));
 const emptyState = /** @type {HTMLDivElement} */ (el("emptyState"));
 const status = /** @type {HTMLDivElement} */ (el("status"));
@@ -581,6 +606,7 @@ function startGlobalTimer() {
   saveState(state);
   syncTimerControls();
   renderStudents();
+  openTimerModalIfNeeded();
   setTransientStatus("Temporizador iniciado");
 }
 
@@ -605,6 +631,55 @@ function pauseGlobalTimer() {
   syncTimerControls();
   renderStudents();
   setTransientStatus("Tiempo en pausa");
+}
+
+function renderTimerModal() {
+  const cls = getSelectedClass();
+  const withTime = cls.students
+    .map((s) => ({ s, remainingMs: getNegativeRemainingMs(s) }))
+    .filter((x) => x.remainingMs > 0)
+    .sort((a, b) => b.remainingMs - a.remainingMs);
+
+  timerStudentList.innerHTML = "";
+  timerEmpty.hidden = withTime.length !== 0;
+
+  for (const { s, remainingMs } of withTime) {
+    const li = document.createElement("li");
+    li.className = "item";
+
+    const left = document.createElement("span");
+    left.className = "left";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = s.name;
+    left.appendChild(name);
+
+    const right = document.createElement("span");
+    right.className = "right";
+    const t = document.createElement("span");
+    t.className = "count";
+    t.dataset.studentId = s.id;
+    t.dataset.role = "timer-modal";
+    t.textContent = `⏱ ${formatRemaining(remainingMs)}`;
+    right.appendChild(t);
+
+    li.appendChild(left);
+    li.appendChild(right);
+    timerStudentList.appendChild(li);
+  }
+}
+
+function openTimerModalIfNeeded() {
+  const cls = getSelectedClass();
+  const hasAny = cls.students.some((s) => getNegativeRemainingMs(s) > 0);
+  if (!hasAny) return;
+
+  renderTimerModal();
+  if (typeof timerDialog.showModal === "function") {
+    timerDialog.showModal();
+  } else {
+    timerDialog.setAttribute("open", "");
+  }
 }
 
 
@@ -772,8 +847,18 @@ function renderStudents() {
 
     posBtn.addEventListener("click", () => {
       student.positiveCount = (student.positiveCount ?? 0) + 1;
+      pushHistory(student, "pos");
       saveState(state);
       renderStudents();
+    });
+
+    const historyBtn = document.createElement("button");
+    historyBtn.type = "button";
+    historyBtn.className = "miniBtn";
+    historyBtn.textContent = "Histórico";
+    historyBtn.setAttribute("aria-label", `Ver histórico de ${student.name}`);
+    historyBtn.addEventListener("click", () => {
+      openHistoryModal(student);
     });
 
     const editBtn = document.createElement("button");
@@ -824,12 +909,120 @@ function renderStudents() {
 
     right.appendChild(counts);
     right.appendChild(posBtn);
+  right.appendChild(historyBtn);
     right.appendChild(editBtn);
     right.appendChild(deleteBtn);
 
     li.appendChild(left);
     li.appendChild(right);
     studentList.appendChild(li);
+  }
+}
+
+function formatEventTs(ts) {
+  try {
+    return new Date(ts).toLocaleString();
+  } catch {
+    return String(ts);
+  }
+}
+
+/** @param {Student} student */
+function openHistoryModal(student) {
+  historySubtitle.textContent = `${student.name} · ${getSelectedClass().name}`;
+  const events = Array.isArray(student.history) ? student.history.slice() : [];
+  events.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+
+  historyList.innerHTML = "";
+  historyEmpty.hidden = events.length !== 0;
+
+  for (const ev of events) {
+    const li = document.createElement("li");
+    li.className = "item";
+
+    const left = document.createElement("span");
+    left.className = "left";
+    const label = document.createElement("span");
+    label.className = "name";
+    label.textContent = ev.type === "neg" ? "☹︎ +1" : "🙂 +1";
+    left.appendChild(label);
+
+    const right = document.createElement("span");
+    right.className = "right";
+    const when = document.createElement("span");
+    when.className = "count";
+    when.textContent = formatEventTs(ev.ts);
+    right.appendChild(when);
+
+    li.appendChild(left);
+    li.appendChild(right);
+    historyList.appendChild(li);
+  }
+
+  if (typeof historyDialog.showModal === "function") {
+    historyDialog.showModal();
+  } else {
+    historyDialog.setAttribute("open", "");
+  }
+}
+
+function openClassHistoryModal() {
+  const cls = getSelectedClass();
+  classHistorySubtitle.textContent = `Resumen por alumno (totales de ☹︎ y 🙂) · ${cls.name}`;
+
+  const rows = cls.students
+    .map((s) => {
+      const h = Array.isArray(s.history) ? s.history : [];
+      let neg = 0;
+      let pos = 0;
+      for (const ev of h) {
+        if (!ev) continue;
+        const d = Math.max(0, Math.floor(Number(ev.delta ?? 1)));
+        if (ev.type === "neg") neg += d;
+        else if (ev.type === "pos") pos += d;
+      }
+      return { name: s.name, neg, pos };
+    })
+    .filter((r) => r.neg > 0 || r.pos > 0)
+    .sort((a, b) => (b.neg - a.neg) || (b.pos - a.pos) || a.name.localeCompare(b.name));
+
+  classHistoryList.innerHTML = "";
+  classHistoryEmpty.hidden = rows.length !== 0;
+
+  for (const r of rows) {
+    const li = document.createElement("li");
+    li.className = "item";
+
+    const left = document.createElement("span");
+    left.className = "left";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = r.name;
+    left.appendChild(name);
+
+    const right = document.createElement("span");
+    right.className = "right";
+
+    const neg = document.createElement("span");
+    neg.className = "count";
+    neg.textContent = `☹︎ ${r.neg}`;
+
+    const pos = document.createElement("span");
+    pos.className = "count";
+    pos.textContent = `🙂 ${r.pos}`;
+
+    right.appendChild(neg);
+    right.appendChild(pos);
+
+    li.appendChild(left);
+    li.appendChild(right);
+    classHistoryList.appendChild(li);
+  }
+
+  if (typeof classHistoryDialog.showModal === "function") {
+    classHistoryDialog.showModal();
+  } else {
+    classHistoryDialog.setAttribute("open", "");
   }
 }
 
@@ -876,6 +1069,19 @@ function tickTimers() {
     const remainingMs = getNegativeRemainingMs(student);
     const icon = running ? "⏱" : "⏸";
     node.textContent = `${icon} ${remainingMs > 0 ? formatRemaining(remainingMs) : "00:00"}`;
+  }
+
+  // Actualiza también el modal de tiempos si está abierto.
+  if (timerDialog.hasAttribute("open") || timerDialog.open) {
+    /** @type {NodeListOf<HTMLSpanElement>} */
+    const modalTimers = document.querySelectorAll("[data-role='timer-modal'][data-student-id]");
+    for (const node of modalTimers) {
+      const id = node.dataset.studentId;
+      const s = cls.students.find((x) => x.id === id);
+      if (!s) continue;
+      const remainingMs = getNegativeRemainingMs(s);
+      node.textContent = `⏱ ${remainingMs > 0 ? formatRemaining(remainingMs) : "00:00"}`;
+    }
   }
 }
 
@@ -1015,6 +1221,50 @@ timerPlayBtn.addEventListener("click", () => {
 
 timerPauseBtn.addEventListener("click", () => {
   pauseGlobalTimer();
+});
+
+closeTimerBtn.addEventListener("click", () => {
+  timerDialog.close?.();
+  timerDialog.removeAttribute("open");
+});
+
+timerDialog.addEventListener("click", (e) => {
+  if (e.target === timerDialog) {
+    timerDialog.close?.();
+    timerDialog.removeAttribute("open");
+  }
+});
+
+closeHistoryBtn.addEventListener("click", () => {
+  historyDialog.close?.();
+  historyDialog.removeAttribute("open");
+});
+
+historyDialog.addEventListener("click", (e) => {
+  if (e.target === historyDialog) {
+    historyDialog.close?.();
+    historyDialog.removeAttribute("open");
+  }
+});
+
+openClassHistoryBtn.addEventListener("click", () => {
+  try {
+    openClassHistoryModal();
+  } catch (e) {
+    setTransientStatus(e instanceof Error ? e.message : "Error al abrir histórico", 4000);
+  }
+});
+
+closeClassHistoryBtn.addEventListener("click", () => {
+  classHistoryDialog.close?.();
+  classHistoryDialog.removeAttribute("open");
+});
+
+classHistoryDialog.addEventListener("click", (e) => {
+  if (e.target === classHistoryDialog) {
+    classHistoryDialog.close?.();
+    classHistoryDialog.removeAttribute("open");
+  }
 });
 
 resetClassBtn.addEventListener("click", () => {
