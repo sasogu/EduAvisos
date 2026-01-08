@@ -247,8 +247,14 @@ body {
   margin-left: auto;
 }
 
+.countGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .count {
-  min-width: 40px;
+  min-width: 76px;
   text-align: right;
   color: var(--muted);
   font-variant-numeric: tabular-nums;

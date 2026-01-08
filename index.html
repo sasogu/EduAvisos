@@ -4,7 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>EduAvisos</title>
-    <link rel="stylesheet" href="styles.css" />
+
+    <!-- Anti-caché (útil en desarrollo con http.server / recargas) -->
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <script>
+      // Cache-busting automático: fuerza recarga de CSS/JS en cada carga.
+      (function () {
+        const v = Date.now().toString();
+        window.__EDUNOTAS_V = v;
+
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = `styles.css?v=${v}`;
+        document.head.appendChild(link);
+      })();
+    </script>
   </head>
   <body>
     <header class="header">
@@ -22,7 +39,7 @@
           </label>
           <button id="saveClassNameBtn" class="btn" type="button">Guardar nombre</button>
 
-          <button id="resetClassBtn" class="btn btn--secondary" type="button">Reiniciar marcas</button>
+          <button id="resetClassBtn" class="btn btn--secondary" type="button">Reiniciar contadores</button>
         </div>
       </div>
     </header>
@@ -73,14 +90,18 @@ María García"></textarea>
             <h2 id="listTitle" class="panel__title">Alumnos</h2>
             <div class="listControls">
               <label class="field field--inline">
-                <span class="field__label">Filtrar (≥ asistencias)</span>
+                <span class="field__label">☹︎ ≥</span>
                 <input id="minCount" class="field__input field__input--small" type="number" min="0" step="1" value="0" />
+              </label>
+              <label class="field field--inline">
+                <span class="field__label">🙂 ≥</span>
+                <input id="minPositive" class="field__input field__input--small" type="number" min="0" step="1" value="0" />
               </label>
               <button id="clearFilterBtn" class="btn btn--secondary" type="button">Limpiar filtro</button>
               <div class="status" id="status"></div>
             </div>
           </div>
-          <p class="panel__subtitle">Click en el nombre: suma +1. Botón X: marca/desmarca (al marcar también suma +1).</p>
+          <p class="panel__subtitle">Click en el nombre: +1 ☹︎. Botones "+☹︎" y "+🙂" para sumar sin pinchar el nombre.</p>
         </div>
 
         <div id="emptyState" class="empty" hidden>
@@ -97,6 +118,13 @@ María García"></textarea>
       </div>
     </footer>
 
-    <script src="app.js?v=20260107"></script>
+    <script>
+      (function () {
+        const v = window.__EDUNOTAS_V || Date.now().toString();
+        const s = document.createElement("script");
+        s.src = `app.js?v=${v}`;
+        document.body.appendChild(s);
+      })();
+    </script>
   </body>
 </html>

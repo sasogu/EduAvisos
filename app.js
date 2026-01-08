@@ -1,14 +1,15 @@
 /*
-  EduNotas — Asistencia (HTML5 + localStorage)
+  EduNotas — Avisos (HTML5 + localStorage)
   - 12 clases (configurable)
-  - Click en alumno: alterna marca "X"
+  - Click en alumno: suma +1 aviso negativo
+  - Botón +Pos: suma +1 aviso positivo
   - Importación local por texto/archivo
 */
 
 const APP_KEY = "edunotas_asistencia_v1";
 
-/** @typedef {{ id: string, name: string, marked: boolean, count: number }} Student */
-/** @typedef {{ classes: Record<string, { name: string, students: Student[] }>, ui?: { minCountByClass?: Record<string, number> } }} AppState */
+/** @typedef {{ id: string, name: string, marked?: boolean, count: number, positiveCount?: number }} Student */
+/** @typedef {{ classes: Record<string, { name: string, students: Student[] }>, ui?: { minCountByClass?: Record<string, number>, minPositiveByClass?: Record<string, number> } }} AppState */
 
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -39,12 +40,14 @@ function loadState() {
     const migrated = parsed;
     if (!migrated.ui) migrated.ui = { minCountByClass: {} };
     if (!migrated.ui.minCountByClass) migrated.ui.minCountByClass = {};
+    if (!migrated.ui.minPositiveByClass) migrated.ui.minPositiveByClass = {};
 
     for (const classId of Object.keys(migrated.classes)) {
       const cls = migrated.classes[classId];
       if (!cls || !Array.isArray(cls.students)) continue;
       for (const s of cls.students) {
         if (typeof s.count !== "number") s.count = 0;
+        if (typeof s.positiveCount !== "number") s.positiveCount = 0;
         if (typeof s.marked !== "boolean") s.marked = false;
       }
     }
@@ -113,6 +116,7 @@ const studentList = /** @type {HTMLUListElement} */ (el("studentList"));
 const emptyState = /** @type {HTMLDivElement} */ (el("emptyState"));
 const status = /** @type {HTMLDivElement} */ (el("status"));
 const minCountInput = /** @type {HTMLInputElement} */ (el("minCount"));
+const minPositiveInput = /** @type {HTMLInputElement} */ (el("minPositive"));
 const clearFilterBtn = /** @type {HTMLButtonElement} */ (el("clearFilterBtn"));
 
 let state = loadState();
@@ -123,11 +127,24 @@ function getMinCountForSelectedClass() {
   return typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
 }
 
+function getMinPositiveForSelectedClass() {
+  const n = state.ui?.minPositiveByClass?.[selectedClassId];
+  return typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
 function setMinCountForSelectedClass(value) {
   const n = Math.max(0, Math.floor(Number(value) || 0));
   if (!state.ui) state.ui = { minCountByClass: {} };
   if (!state.ui.minCountByClass) state.ui.minCountByClass = {};
   state.ui.minCountByClass[selectedClassId] = n;
+  saveState(state);
+}
+
+function setMinPositiveForSelectedClass(value) {
+  const n = Math.max(0, Math.floor(Number(value) || 0));
+  if (!state.ui) state.ui = { minCountByClass: {}, minPositiveByClass: {} };
+  if (!state.ui.minPositiveByClass) state.ui.minPositiveByClass = {};
+  state.ui.minPositiveByClass[selectedClassId] = n;
   saveState(state);
 }
 
@@ -189,17 +206,22 @@ function saveClassName() {
 function renderStudents() {
   const cls = getSelectedClass();
   const total = cls.students.length;
-  const marked = cls.students.filter((s) => s.marked).length;
-  const minCount = getMinCountForSelectedClass();
-  const visibleStudents = cls.students.filter((s) => (s.count ?? 0) >= minCount);
+  const minNeg = getMinCountForSelectedClass();
+  const minPos = getMinPositiveForSelectedClass();
+  const visibleStudents = cls.students.filter(
+    (s) => (s.count ?? 0) >= minNeg && (s.positiveCount ?? 0) >= minPos
+  );
   const visibleTotal = visibleStudents.length;
 
   if (!total) {
     setStatus("");
-  } else if (minCount > 0) {
-    setStatus(`${marked}/${total} marcados · mostrando ${visibleTotal}/${total} (≥${minCount})`);
+  } else if (minNeg > 0 || minPos > 0) {
+    const parts = [];
+    if (minNeg > 0) parts.push(`☹︎≥${minNeg}`);
+    if (minPos > 0) parts.push(`🙂≥${minPos}`);
+    setStatus(`Mostrando ${visibleTotal}/${total} (${parts.join(" · ")})`);
   } else {
-    setStatus(`${marked}/${total} marcados`);
+    setStatus(`${total} alumnos`);
   }
 
   studentList.innerHTML = "";
@@ -208,7 +230,10 @@ function renderStudents() {
   if (total !== 0 && visibleTotal === 0) {
     // Estado vacío por filtro
     emptyState.hidden = false;
-    emptyState.textContent = `No hay alumnos con asistencias ≥ ${minCount}. Baja el filtro o suma asistencias.`;
+    const parts = [];
+    if (minNeg > 0) parts.push(`☹︎ ≥ ${minNeg}`);
+    if (minPos > 0) parts.push(`🙂 ≥ ${minPos}`);
+    emptyState.textContent = `No hay alumnos que cumplan el filtro (${parts.join(" y ")}). Baja el filtro o suma avisos.`;
   } else {
     emptyState.textContent = "Aún no hay alumnos en esta clase. Importa una lista arriba.";
   }
@@ -229,44 +254,57 @@ function renderStudents() {
     name.className = "name";
     name.textContent = student.name;
 
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    meta.textContent = student.marked ? "Marcado" : "Sin marcar";
-
     nameBtn.addEventListener("click", () => {
-      // Un click en el nombre siempre suma +1 (no desmarca).
+      // Un click en el nombre siempre suma +1 aviso negativo.
       student.count = (student.count ?? 0) + 1;
       saveState(state);
       renderStudents();
     });
 
     nameBtn.appendChild(name);
-    nameBtn.appendChild(meta);
     left.appendChild(nameBtn);
 
     const right = document.createElement("span");
     right.className = "right";
 
-    const count = document.createElement("span");
-    count.className = "count";
-    count.textContent = String(student.count ?? 0);
+    const counts = document.createElement("span");
+    counts.className = "countGroup";
 
-    const markBtn = document.createElement("button");
-    markBtn.type = "button";
-    markBtn.className = student.marked ? "badge badge--marked" : "badge";
-    markBtn.textContent = student.marked ? "X" : "";
-    markBtn.setAttribute(
-      "aria-label",
-      student.marked ? `Desmarcar: ${student.name}` : `Marcar: ${student.name}`
-    );
+    const negCount = document.createElement("span");
+    negCount.className = "count";
+    negCount.textContent = `☹︎ ${student.count ?? 0}`;
+    negCount.setAttribute("aria-label", `Avisos negativos: ${student.count ?? 0}`);
 
-    markBtn.addEventListener("click", () => {
-      const wasMarked = student.marked;
-      student.marked = !student.marked;
-      // Cuenta +1 solo al pasar a marcado.
-      if (!wasMarked && student.marked) {
-        student.count = (student.count ?? 0) + 1;
-      }
+    const posCount = document.createElement("span");
+    posCount.className = "count";
+    posCount.textContent = `🙂 ${student.positiveCount ?? 0}`;
+    posCount.setAttribute("aria-label", `Avisos positivos: ${student.positiveCount ?? 0}`);
+
+    const negBtn = document.createElement("button");
+    negBtn.type = "button";
+    negBtn.className = "miniBtn";
+    negBtn.textContent = "+☹︎";
+    negBtn.setAttribute("aria-label", `Sumar aviso negativo a ${student.name}`);
+
+    negBtn.addEventListener("click", () => {
+      student.count = (student.count ?? 0) + 1;
+      saveState(state);
+      renderStudents();
+    });
+
+    // Orden: botón +☹︎ junto al contador ☹︎ (a la izquierda)
+    counts.appendChild(negBtn);
+    counts.appendChild(negCount);
+    counts.appendChild(posCount);
+
+    const posBtn = document.createElement("button");
+    posBtn.type = "button";
+    posBtn.className = "miniBtn";
+    posBtn.textContent = "+🙂";
+    posBtn.setAttribute("aria-label", `Sumar aviso positivo a ${student.name}`);
+
+    posBtn.addEventListener("click", () => {
+      student.positiveCount = (student.positiveCount ?? 0) + 1;
       saveState(state);
       renderStudents();
     });
@@ -317,8 +355,8 @@ function renderStudents() {
       renderStudents();
     });
 
-    right.appendChild(count);
-    right.appendChild(markBtn);
+    right.appendChild(counts);
+    right.appendChild(posBtn);
     right.appendChild(editBtn);
     right.appendChild(deleteBtn);
 
@@ -331,8 +369,8 @@ function renderStudents() {
 function resetMarksForSelectedClass() {
   const cls = getSelectedClass();
   for (const s of cls.students) {
-    s.marked = false;
     s.count = 0;
+    s.positiveCount = 0;
   }
   saveState(state);
   renderStudents();
@@ -355,7 +393,7 @@ function applyImportToSelectedClass(names) {
       skipped++;
       continue;
     }
-    cls.students.push({ id: uid(), name, marked: false, count: 0 });
+    cls.students.push({ id: uid(), name, count: 0, positiveCount: 0 });
     existingByName.set(key, cls.students[cls.students.length - 1]);
     added++;
   }
@@ -401,6 +439,7 @@ importDialog.addEventListener("click", (e) => {
 classSelect.addEventListener("change", () => {
   selectedClassId = classSelect.value;
   minCountInput.value = String(getMinCountForSelectedClass());
+  minPositiveInput.value = String(getMinPositiveForSelectedClass());
   renderClassNameInput();
   renderStudents();
 });
@@ -428,16 +467,23 @@ minCountInput.addEventListener("input", () => {
   renderStudents();
 });
 
+minPositiveInput.addEventListener("input", () => {
+  setMinPositiveForSelectedClass(minPositiveInput.value);
+  renderStudents();
+});
+
 clearFilterBtn.addEventListener("click", () => {
   minCountInput.value = "0";
   setMinCountForSelectedClass(0);
+  minPositiveInput.value = "0";
+  setMinPositiveForSelectedClass(0);
   renderStudents();
 });
 
 resetClassBtn.addEventListener("click", () => {
   const cls = getSelectedClass();
   if (!cls.students.length) return;
-  const ok = confirm(`¿Reiniciar marcas de ${cls.name}?`);
+  const ok = confirm(`¿Reiniciar contadores de ${cls.name}?`);
   if (!ok) return;
   resetMarksForSelectedClass();
 });
@@ -478,5 +524,6 @@ importApplyBtn.addEventListener("click", async () => {
 // Init
 renderClassSelect();
 minCountInput.value = String(getMinCountForSelectedClass());
+minPositiveInput.value = String(getMinPositiveForSelectedClass());
 renderClassNameInput();
 renderStudents();

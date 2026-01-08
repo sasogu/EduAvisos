@@ -1,6 +1,6 @@
-# EduNotas — Asistencia (HTML5)
+# EduNotas — Avisos (HTML5)
 
-App local para tener la lista de alumnos por clase y marcar/desmarcar una "X" haciendo click en su nombre.
+App local para tener la lista de alumnos por clase y llevar contadores de avisos negativos y positivos por alumno.
 
 ## Cómo usar
 
@@ -11,15 +11,18 @@ App local para tener la lista de alumnos por clase y marcar/desmarcar una "X" ha
   - Pega un alumno por línea, o
   - Carga un `.txt` / `.csv`.
 - La importación AÑADE alumnos (no sobrescribe los existentes).
-- Click sobre un alumno para alternar su marca.
-- Cada vez que se marca (pasa a "X"), suma +1 asistencia.
-- Botón "+1" para sumar asistencia manualmente.
-- Filtro: muestra solo alumnos con asistencias ≥ N.
+- Click sobre el nombre de un alumno: suma +1 aviso negativo.
+- Botón "+☹︎": suma +1 aviso negativo.
+- Botón "+🙂": suma +1 aviso positivo.
+- Filtro: muestra solo alumnos con avisos negativos ≥ N.
+- Botón "Limpiar filtro": vuelve a 0.
+- Puedes editar o eliminar alumnos.
+- Botón "Reiniciar contadores": pone todos los contadores a 0 en la clase.
 
 ## Datos
 
 - Se guardan en `localStorage` del navegador.
-- Las marcas se guardan por clase.
+- El filtro (≥) se guarda por clase.
 
 ## Importación
 
