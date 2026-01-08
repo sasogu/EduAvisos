@@ -33,35 +33,45 @@
             <select id="classSelect" class="field__input" aria-label="Seleccionar clase"></select>
           </label>
 
-          <label class="field">
-            <span class="field__label">Nombre de clase</span>
-            <input id="className" class="field__input" type="text" placeholder="Ej: 1ºA" />
-          </label>
-          <button id="saveClassNameBtn" class="btn" type="button">Guardar nombre</button>
-
           <button id="resetClassBtn" class="btn btn--secondary" type="button">Reiniciar contadores</button>
+
+          <button id="timerPlayBtn" class="btn btn--secondary iconBtn" type="button" aria-label="Iniciar/Reanudar tiempo" title="Play">▶︎</button>
+          <button id="timerPauseBtn" class="btn btn--secondary iconBtn" type="button" aria-label="Pausar tiempo" title="Pausa">⏸</button>
+
+          <button id="openImportBtn" class="btn iconBtn" type="button" aria-label="Abrir configuración" title="Configuración">⚙︎</button>
         </div>
       </div>
     </header>
 
     <main class="container">
-      <section class="panel" aria-labelledby="importTitle">
-        <div class="panel__header">
-          <h2 id="importTitle" class="panel__title">Importar alumnos</h2>
-          <p class="panel__subtitle">Importación local: añade alumnos nuevos a la clase actual (si el nombre ya existe, se queda como está).</p>
-          <div class="panel__actions">
-            <button id="openImportBtn" class="btn" type="button">Abrir importador</button>
-          </div>
-        </div>
-      </section>
-
       <dialog id="importDialog" class="modal" aria-labelledby="importDialogTitle">
         <div class="modal__header">
-          <h3 id="importDialogTitle" class="modal__title">Importar alumnos (local)</h3>
+          <h3 id="importDialogTitle" class="modal__title">Configuración</h3>
           <button id="closeImportBtn" class="btn btn--secondary" type="button">Cerrar</button>
         </div>
 
-        <p class="modal__subtitle">Pega una lista (1 alumno por línea) o carga un archivo .txt/.csv. Se AÑADEN a la clase actual (no se borra lo existente).</p>
+        <div class="config">
+          <div class="config__row">
+            <label class="field field--grow">
+              <span class="field__label">Nombre de clase (para la clase seleccionada)</span>
+              <input id="className" class="field__input" type="text" placeholder="Ej: 1ºA" />
+            </label>
+            <button id="saveClassNameBtn" class="btn" type="button">Guardar nombre</button>
+          </div>
+
+          <div class="config__row">
+            <label class="field">
+              <span class="field__label">Minutos por ☹︎</span>
+              <input id="negMinutesPerPoint" class="field__input field__input--small" type="number" min="0" step="1" value="5" />
+            </label>
+            <label class="field">
+              <span class="field__label">Minutos por 🙂</span>
+              <input id="posMinutesPerPoint" class="field__input field__input--small" type="number" min="0" step="1" value="5" />
+            </label>
+          </div>
+        </div>
+
+        <p class="modal__subtitle">Importa alumnos: pega una lista (1 por línea) o carga un archivo .txt/.csv. Se AÑADEN a la clase actual (no se borra lo existente).</p>
 
         <div class="import">
           <label class="field field--grow">

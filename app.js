@@ -8,8 +8,11 @@
 
 const APP_KEY = "edunotas_asistencia_v1";
 
-/** @typedef {{ id: string, name: string, marked?: boolean, count: number, positiveCount?: number }} Student */
-/** @typedef {{ classes: Record<string, { name: string, students: Student[] }>, ui?: { minCountByClass?: Record<string, number>, minPositiveByClass?: Record<string, number> } }} AppState */
+/** @typedef {{ id: string, name: string, marked?: boolean, count: number, positiveCount?: number, negExpiresAt?: number, negSpentMs?: number }} Student */
+/** @typedef {{ classes: Record<string, { name: string, students: Student[] }>, ui?: { minCountByClass?: Record<string, number>, minPositiveByClass?: Record<string, number>, timerRunning?: boolean, timerFrozenAt?: number, negMinutesPerPoint?: number, posMinutesPerPoint?: number, lastTickNow?: number } }} AppState */
+
+const DEFAULT_NEG_MINUTES_PER_POINT = 5;
+const DEFAULT_POS_MINUTES_PER_POINT = 5;
 
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -24,7 +27,18 @@ function defaultState() {
     const id = `clase_${String(i).padStart(2, "0")}`;
     classes[id] = { name: `Clase ${i}`, students: [] };
   }
-  return { classes, ui: { minCountByClass: {} } };
+  return {
+    classes,
+    ui: {
+      minCountByClass: {},
+      minPositiveByClass: {},
+      timerRunning: false,
+      timerFrozenAt: Date.now(),
+      negMinutesPerPoint: DEFAULT_NEG_MINUTES_PER_POINT,
+      posMinutesPerPoint: DEFAULT_POS_MINUTES_PER_POINT,
+      lastTickNow: Date.now(),
+    },
+  };
 }
 
 /** @returns {AppState} */
@@ -41,6 +55,19 @@ function loadState() {
     if (!migrated.ui) migrated.ui = { minCountByClass: {} };
     if (!migrated.ui.minCountByClass) migrated.ui.minCountByClass = {};
     if (!migrated.ui.minPositiveByClass) migrated.ui.minPositiveByClass = {};
+    if (typeof migrated.ui.timerRunning !== "boolean") migrated.ui.timerRunning = false;
+    if (typeof migrated.ui.timerFrozenAt !== "number" || !Number.isFinite(migrated.ui.timerFrozenAt)) {
+      migrated.ui.timerFrozenAt = Date.now();
+    }
+    if (typeof migrated.ui.negMinutesPerPoint !== "number" || !Number.isFinite(migrated.ui.negMinutesPerPoint)) {
+      migrated.ui.negMinutesPerPoint = DEFAULT_NEG_MINUTES_PER_POINT;
+    }
+    if (typeof migrated.ui.posMinutesPerPoint !== "number" || !Number.isFinite(migrated.ui.posMinutesPerPoint)) {
+      migrated.ui.posMinutesPerPoint = DEFAULT_POS_MINUTES_PER_POINT;
+    }
+    if (typeof migrated.ui.lastTickNow !== "number" || !Number.isFinite(migrated.ui.lastTickNow)) {
+      migrated.ui.lastTickNow = Date.now();
+    }
 
     for (const classId of Object.keys(migrated.classes)) {
       const cls = migrated.classes[classId];
@@ -49,6 +76,18 @@ function loadState() {
         if (typeof s.count !== "number") s.count = 0;
         if (typeof s.positiveCount !== "number") s.positiveCount = 0;
         if (typeof s.marked !== "boolean") s.marked = false;
+        if (typeof s.negSpentMs !== "number" || !Number.isFinite(s.negSpentMs) || s.negSpentMs < 0) s.negSpentMs = 0;
+
+        // Migración: si existe negExpiresAt (modelo antiguo), conviértelo a negSpentMs aproximado.
+        if (typeof s.negExpiresAt === "number" && Number.isFinite(s.negExpiresAt) && (s.count ?? 0) > 0) {
+          const now = Date.now();
+          const remaining = Math.max(0, s.negExpiresAt - now);
+          const negMsPerPoint = Math.max(0, Math.floor(migrated.ui.negMinutesPerPoint) || 0) * 60 * 1000;
+          const total = Math.max(0, (s.count ?? 0) * negMsPerPoint);
+          s.negSpentMs = Math.max(0, total - remaining);
+        }
+        // Deja el campo antiguo sin uso.
+        if (typeof s.negExpiresAt !== "number") s.negExpiresAt = undefined;
       }
     }
 
@@ -56,6 +95,101 @@ function loadState() {
   } catch {
     return defaultState();
   }
+}
+
+function getNegMsPerPoint() {
+  const minutes = Number(state.ui?.negMinutesPerPoint);
+  const m = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : DEFAULT_NEG_MINUTES_PER_POINT;
+  return m * 60 * 1000;
+}
+
+function getPosMsPerPoint() {
+  const minutes = Number(state.ui?.posMinutesPerPoint);
+  const m = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : DEFAULT_POS_MINUTES_PER_POINT;
+  return m * 60 * 1000;
+}
+
+function getEffectiveNow() {
+  const running = Boolean(state?.ui?.timerRunning);
+  if (running) return Date.now();
+  const frozen = state?.ui?.timerFrozenAt;
+  return typeof frozen === "number" && Number.isFinite(frozen) ? frozen : Date.now();
+}
+
+function formatRemaining(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/**
+ * Expiración efectiva del temporizador negativo.
+ * - Base: cada ☹︎ suma 5 min (negExpiresAt)
+ * - Si el alumno tiene ☹︎, cada 🙂 resta 5 min
+ * - Nunca puede quedar por debajo de 0 (se considera expirado)
+ * @param {Student} student
+ */
+function getEffectiveNegExpiresAt(student) {
+  if (typeof student.negExpiresAt !== "number") return undefined;
+
+  const hasNeg = (student.count ?? 0) > 0;
+  if (!hasNeg) return student.negExpiresAt;
+
+  const pos = Math.max(0, Math.floor(student.positiveCount ?? 0));
+  const adjusted = student.negExpiresAt - pos * NEG_MS_PER_POINT;
+  return adjusted;
+}
+
+/** @param {Student} student */
+function addNegativePoint(student) {
+  const now = getEffectiveNow();
+  const prev = student.count ?? 0;
+  student.count = prev + 1;
+
+  // Si empieza una "racha" nueva de negativos, reinicia el tiempo consumido.
+  if (prev <= 0) {
+    student.negSpentMs = 0;
+  }
+
+  // El tiempo restante se calcula con: count*negMs - spent - pos*posMs.
+  // No necesitamos tocar negExpiresAt aquí.
+  void now;
+}
+
+/** @param {Student} student */
+function getNegativeRemainingMs(student) {
+  const neg = Math.max(0, Math.floor(student.count ?? 0));
+  if (neg <= 0) return 0;
+
+  const spent = Math.max(0, Number(student.negSpentMs) || 0);
+  const totalNegMs = neg * getNegMsPerPoint();
+
+  const pos = Math.max(0, Math.floor(student.positiveCount ?? 0));
+  const totalPosMs = pos * getPosMsPerPoint();
+
+  return Math.max(0, totalNegMs - spent - totalPosMs);
+}
+
+/** @param {{ students: Student[] }} cls */
+function expireNegativesIfNeeded(cls) {
+  const now = getEffectiveNow();
+  let changed = false;
+
+  for (const s of cls.students) {
+    const remaining = getNegativeRemainingMs(s);
+    if (remaining > 0) continue;
+
+    if ((s.count ?? 0) !== 0) {
+      s.count = 0;
+      s.negSpentMs = 0;
+      changed = true;
+    }
+
+    // Nota: no tocamos positiveCount; solo limpia el efecto de negativos.
+  }
+
+  return changed;
 }
 
 /** @param {AppState} state */
@@ -105,6 +239,8 @@ const classSelect = /** @type {HTMLSelectElement} */ (el("classSelect"));
 const classNameInput = /** @type {HTMLInputElement} */ (el("className"));
 const saveClassNameBtn = /** @type {HTMLButtonElement} */ (el("saveClassNameBtn"));
 const resetClassBtn = /** @type {HTMLButtonElement} */ (el("resetClassBtn"));
+const timerPlayBtn = /** @type {HTMLButtonElement} */ (el("timerPlayBtn"));
+const timerPauseBtn = /** @type {HTMLButtonElement} */ (el("timerPauseBtn"));
 const importTextarea = /** @type {HTMLTextAreaElement} */ (el("importTextarea"));
 const importFile = /** @type {HTMLInputElement} */ (el("importFile"));
 const importApplyBtn = /** @type {HTMLButtonElement} */ (el("importApplyBtn"));
@@ -118,6 +254,8 @@ const status = /** @type {HTMLDivElement} */ (el("status"));
 const minCountInput = /** @type {HTMLInputElement} */ (el("minCount"));
 const minPositiveInput = /** @type {HTMLInputElement} */ (el("minPositive"));
 const clearFilterBtn = /** @type {HTMLButtonElement} */ (el("clearFilterBtn"));
+const negMinutesPerPointInput = /** @type {HTMLInputElement} */ (el("negMinutesPerPoint"));
+const posMinutesPerPointInput = /** @type {HTMLInputElement} */ (el("posMinutesPerPoint"));
 
 let state = loadState();
 let selectedClassId = Object.keys(state.classes)[0] ?? "clase_01";
@@ -158,6 +296,106 @@ function setTransientStatus(text, ms = 2500) {
   setTransientStatus._t = window.setTimeout(() => setStatus(""), ms);
 }
 setTransientStatus._t = 0;
+
+function clampMinutes(value, fallback) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
+function getNegMinutesPerPoint() {
+  const v = state.ui?.negMinutesPerPoint;
+  return clampMinutes(v, DEFAULT_NEG_MINUTES_PER_POINT);
+}
+
+function getPosMinutesPerPoint() {
+  const v = state.ui?.posMinutesPerPoint;
+  return clampMinutes(v, DEFAULT_POS_MINUTES_PER_POINT);
+}
+
+function setNegMinutesPerPoint(value) {
+  if (!state.ui) state.ui = defaultState().ui;
+  state.ui.negMinutesPerPoint = clampMinutes(value, DEFAULT_NEG_MINUTES_PER_POINT);
+  saveState(state);
+}
+
+function setPosMinutesPerPoint(value) {
+  if (!state.ui) state.ui = defaultState().ui;
+  state.ui.posMinutesPerPoint = clampMinutes(value, DEFAULT_POS_MINUTES_PER_POINT);
+  saveState(state);
+}
+
+function syncTimerControls() {
+  const running = Boolean(state.ui?.timerRunning);
+  timerPlayBtn.disabled = running;
+  timerPauseBtn.disabled = !running;
+}
+
+function startGlobalTimer() {
+  if (!state.ui) {
+    state.ui = {
+      minCountByClass: {},
+      minPositiveByClass: {},
+      timerRunning: false,
+      timerFrozenAt: Date.now(),
+      negMinutesPerPoint: DEFAULT_NEG_MINUTES_PER_POINT,
+      posMinutesPerPoint: DEFAULT_POS_MINUTES_PER_POINT,
+      lastTickNow: Date.now(),
+    };
+  }
+
+  if (state.ui.timerRunning) return;
+
+  const now = Date.now();
+  const frozen =
+    typeof state.ui.timerFrozenAt === "number" && Number.isFinite(state.ui.timerFrozenAt)
+      ? state.ui.timerFrozenAt
+      : now;
+
+  const delta = now - frozen;
+  if (delta > 0) {
+    for (const classId of Object.keys(state.classes)) {
+      const cls = state.classes[classId];
+      if (!cls || !Array.isArray(cls.students)) continue;
+      for (const s of cls.students) {
+        if (typeof s.negExpiresAt !== "number") continue;
+        s.negExpiresAt = s.negExpiresAt + delta;
+      }
+    }
+  }
+
+  state.ui.timerRunning = true;
+  state.ui.timerFrozenAt = now;
+  state.ui.lastTickNow = now;
+  saveState(state);
+  syncTimerControls();
+  renderStudents();
+  setTransientStatus("Temporizador iniciado");
+}
+
+function pauseGlobalTimer() {
+  if (!state.ui) {
+    state.ui = {
+      minCountByClass: {},
+      minPositiveByClass: {},
+      timerRunning: false,
+      timerFrozenAt: Date.now(),
+      negMinutesPerPoint: DEFAULT_NEG_MINUTES_PER_POINT,
+      posMinutesPerPoint: DEFAULT_POS_MINUTES_PER_POINT,
+      lastTickNow: Date.now(),
+    };
+  }
+  if (!state.ui.timerRunning) return;
+
+  state.ui.timerRunning = false;
+  state.ui.timerFrozenAt = Date.now();
+  state.ui.lastTickNow = state.ui.timerFrozenAt;
+  saveState(state);
+  syncTimerControls();
+  renderStudents();
+  setTransientStatus("Tiempo en pausa");
+}
+
 
 function getSelectedClass() {
   const cls = state.classes[selectedClassId];
@@ -205,6 +443,12 @@ function saveClassName() {
 
 function renderStudents() {
   const cls = getSelectedClass();
+
+  // Primero expira lo que toque (para que el filtro/contadores sean correctos)
+  if (expireNegativesIfNeeded(cls)) {
+    saveState(state);
+  }
+
   const total = cls.students.length;
   const minNeg = getMinCountForSelectedClass();
   const minPos = getMinPositiveForSelectedClass();
@@ -256,7 +500,7 @@ function renderStudents() {
 
     nameBtn.addEventListener("click", () => {
       // Un click en el nombre siempre suma +1 aviso negativo.
-      student.count = (student.count ?? 0) + 1;
+      addNegativePoint(student);
       saveState(state);
       renderStudents();
     });
@@ -275,6 +519,17 @@ function renderStudents() {
     negCount.textContent = `☹︎ ${student.count ?? 0}`;
     negCount.setAttribute("aria-label", `Avisos negativos: ${student.count ?? 0}`);
 
+    const timer = document.createElement("span");
+    timer.className = "timer";
+
+    const running = Boolean(state.ui?.timerRunning);
+    const remainingMs = getNegativeRemainingMs(student);
+    const icon = running ? "⏱" : "⏸";
+    timer.textContent = `${icon} ${remainingMs > 0 ? formatRemaining(remainingMs) : "--:--"}`;
+    timer.setAttribute("aria-label", "Tiempo restante por avisos negativos");
+
+    timer.dataset.studentId = student.id;
+
     const posCount = document.createElement("span");
     posCount.className = "count";
     posCount.textContent = `🙂 ${student.positiveCount ?? 0}`;
@@ -287,7 +542,7 @@ function renderStudents() {
     negBtn.setAttribute("aria-label", `Sumar aviso negativo a ${student.name}`);
 
     negBtn.addEventListener("click", () => {
-      student.count = (student.count ?? 0) + 1;
+      addNegativePoint(student);
       saveState(state);
       renderStudents();
     });
@@ -295,6 +550,7 @@ function renderStudents() {
     // Orden: botón +☹︎ junto al contador ☹︎ (a la izquierda)
     counts.appendChild(negBtn);
     counts.appendChild(negCount);
+    counts.appendChild(timer);
     counts.appendChild(posCount);
 
     const posBtn = document.createElement("button");
@@ -366,11 +622,59 @@ function renderStudents() {
   }
 }
 
+function tickTimers() {
+  const cls = getSelectedClass();
+  const running = Boolean(state.ui?.timerRunning);
+  const now = getEffectiveNow();
+  if (!state.ui) return;
+
+  const prev = typeof state.ui.lastTickNow === "number" && Number.isFinite(state.ui.lastTickNow)
+    ? state.ui.lastTickNow
+    : now;
+  const delta = Math.max(0, now - prev);
+  state.ui.lastTickNow = now;
+
+  let anyChanged = false;
+
+  if (running && delta > 0) {
+    for (const s of cls.students) {
+      if ((s.count ?? 0) <= 0) continue;
+      s.negSpentMs = Math.max(0, (Number(s.negSpentMs) || 0) + delta);
+      anyChanged = true;
+    }
+  }
+
+  const expired = expireNegativesIfNeeded(cls);
+  if (expired) anyChanged = true;
+
+  if (anyChanged) saveState(state);
+
+  // Actualiza solo los textos de los timers; si hubo expiraciones, rerender para que el filtro se aplique.
+  if (expired) {
+    renderStudents();
+    return;
+  }
+
+  /** @type {NodeListOf<HTMLSpanElement>} */
+  const timers = document.querySelectorAll(".timer[data-student-id]");
+  for (const node of timers) {
+    const studentId = node.dataset.studentId;
+    if (!studentId) continue;
+    const student = cls.students.find((s) => s.id === studentId);
+    if (!student) continue;
+    const remainingMs = getNegativeRemainingMs(student);
+    const icon = running ? "⏱" : "⏸";
+    node.textContent = `${icon} ${remainingMs > 0 ? formatRemaining(remainingMs) : "00:00"}`;
+  }
+}
+
 function resetMarksForSelectedClass() {
   const cls = getSelectedClass();
   for (const s of cls.students) {
     s.count = 0;
     s.positiveCount = 0;
+    s.negSpentMs = 0;
+    s.negExpiresAt = undefined;
   }
   saveState(state);
   renderStudents();
@@ -393,7 +697,7 @@ function applyImportToSelectedClass(names) {
       skipped++;
       continue;
     }
-    cls.students.push({ id: uid(), name, count: 0, positiveCount: 0 });
+    cls.students.push({ id: uid(), name, count: 0, positiveCount: 0, negExpiresAt: undefined, negSpentMs: 0 });
     existingByName.set(key, cls.students[cls.students.length - 1]);
     added++;
   }
@@ -415,6 +719,10 @@ function readFileAsText(file) {
 
 // Eventos
 openImportBtn.addEventListener("click", () => {
+  // Sincroniza valores de configuración al abrir
+  negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
+  posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
+
   if (typeof importDialog.showModal === "function") {
     importDialog.showModal();
   } else {
@@ -480,6 +788,24 @@ clearFilterBtn.addEventListener("click", () => {
   renderStudents();
 });
 
+negMinutesPerPointInput.addEventListener("input", () => {
+  setNegMinutesPerPoint(negMinutesPerPointInput.value);
+  renderStudents();
+});
+
+posMinutesPerPointInput.addEventListener("input", () => {
+  setPosMinutesPerPoint(posMinutesPerPointInput.value);
+  renderStudents();
+});
+
+timerPlayBtn.addEventListener("click", () => {
+  startGlobalTimer();
+});
+
+timerPauseBtn.addEventListener("click", () => {
+  pauseGlobalTimer();
+});
+
 resetClassBtn.addEventListener("click", () => {
   const cls = getSelectedClass();
   if (!cls.students.length) return;
@@ -526,4 +852,10 @@ renderClassSelect();
 minCountInput.value = String(getMinCountForSelectedClass());
 minPositiveInput.value = String(getMinPositiveForSelectedClass());
 renderClassNameInput();
+syncTimerControls();
+negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
+posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
 renderStudents();
+
+// Actualiza contadores de tiempo una vez por segundo
+window.setInterval(tickTimers, 1000);
