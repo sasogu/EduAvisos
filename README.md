@@ -20,6 +20,11 @@ App local para tener la lista de alumnos por clase y llevar contadores de avisos
 - Botón "Reiniciar contadores": pone todos los contadores a 0 en la clase.
 - Temporizador: cada ☹︎ suma tiempo y cada 🙂 (si hay ☹︎) resta tiempo (sin bajar de 0). Se muestra una cuenta atrás por alumno y, al llegar a 0, sus ☹︎ vuelven a 0. El tiempo NO baja hasta pulsar Play (▶︎). Puedes Pausar (⏸).
 
+## Estructura de archivos
+
+- `index.html` carga el CSS desde `css/styles.css`.
+- El JavaScript vive en `js/i18n.js` y `js/app.js`.
+
 ## Configuración
 
 - En ⚙︎ puedes configurar los minutos por punto:

@@ -14,6 +14,20 @@ const APP_KEY = "edunotas_asistencia_v1";
 
 const DEFAULT_NEG_MINUTES_PER_POINT = 5;
 const DEFAULT_POS_MINUTES_PER_POINT = 5;
+const i18n = window.EduI18n;
+if (!i18n) throw new Error("Missing i18n bundle");
+const { SUPPORTED_LANGUAGES, t, getResolvedLanguage, setLanguagePreferenceGetter } = i18n;
+
+let state;
+setLanguagePreferenceGetter(() => {
+  const pref = state?.ui?.language;
+  return typeof pref === "string" ? pref : "auto";
+});
+
+function getLanguagePreference() {
+  const pref = state?.ui?.language;
+  return typeof pref === "string" ? pref : "auto";
+}
 
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -26,7 +40,7 @@ function defaultState() {
   const classes = {};
   for (let i = 1; i <= 12; i++) {
     const id = `clase_${String(i).padStart(2, "0")}`;
-    classes[id] = { name: `Clase ${i}`, students: [] };
+    classes[id] = { name: t("class.default", { index: i }), students: [] };
   }
   return {
     classes,
@@ -38,6 +52,7 @@ function defaultState() {
       negMinutesPerPoint: DEFAULT_NEG_MINUTES_PER_POINT,
       posMinutesPerPoint: DEFAULT_POS_MINUTES_PER_POINT,
       lastTickNow: Date.now(),
+      language: "auto",
     },
   };
 }
@@ -53,9 +68,13 @@ function loadState() {
     // Migración suave: añade campos nuevos si faltan.
     /** @type {AppState} */
     const migrated = parsed;
-    if (!migrated.ui) migrated.ui = { minCountByClass: {} };
+    if (!migrated.ui) migrated.ui = { minCountByClass: {}, language: "auto" };
     if (!migrated.ui.minCountByClass) migrated.ui.minCountByClass = {};
     if (!migrated.ui.minPositiveByClass) migrated.ui.minPositiveByClass = {};
+    if (typeof migrated.ui.language !== "string") migrated.ui.language = "auto";
+    if (!SUPPORTED_LANGUAGES.includes(migrated.ui.language) && migrated.ui.language !== "auto") {
+      migrated.ui.language = "auto";
+    }
     if (typeof migrated.ui.timerRunning !== "boolean") migrated.ui.timerRunning = false;
     if (typeof migrated.ui.timerFrozenAt !== "number" || !Number.isFinite(migrated.ui.timerFrozenAt)) {
       migrated.ui.timerFrozenAt = Date.now();
@@ -254,7 +273,7 @@ async function ensurePdfJsLoaded() {
       s.src = url;
       s.async = true;
       s.onload = resolve;
-      s.onerror = () => reject(new Error(`No se pudo cargar pdf.js: ${url}`));
+      s.onerror = () => reject(new Error(t("pdf.error.load", { url })));
       document.head.appendChild(s);
     });
   }
@@ -265,7 +284,7 @@ async function ensurePdfJsLoaded() {
       await loadScript(src.script);
       // @ts-ignore
       const pdfjsLib = window.pdfjsLib;
-      if (!pdfjsLib) throw new Error("pdf.js cargo pero no expuso pdfjsLib");
+      if (!pdfjsLib) throw new Error(t("pdf.error.noExpose"));
       pdfjsLib.GlobalWorkerOptions.workerSrc = src.worker;
       return pdfjsLib;
     } catch (err) {
@@ -273,16 +292,14 @@ async function ensurePdfJsLoaded() {
     }
   }
 
-  throw new Error(
-    "No se pudo cargar pdf.js. Revisa la conexion o coloca pdf.min.js y pdf.worker.min.js en /vendor."
-  );
+  throw new Error(t("pdf.error.final"));
 }
 
 /** @param {File} file */
 function readFileAsArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
-    r.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    r.onerror = () => reject(new Error(t("file.error.read")));
     r.onload = () => resolve(r.result);
     r.readAsArrayBuffer(file);
   });
@@ -405,9 +422,11 @@ const minPositiveInput = /** @type {HTMLInputElement} */ (el("minPositive"));
 const clearFilterBtn = /** @type {HTMLButtonElement} */ (el("clearFilterBtn"));
 const negMinutesPerPointInput = /** @type {HTMLInputElement} */ (el("negMinutesPerPoint"));
 const posMinutesPerPointInput = /** @type {HTMLInputElement} */ (el("posMinutesPerPoint"));
+const languageSelect = /** @type {HTMLSelectElement} */ (el("languageSelect"));
 
-let state = loadState();
+state = loadState();
 let selectedClassId = Object.keys(state.classes)[0] ?? "clase_01";
+let lastHistoryStudentId = null;
 
 function getMinCountForSelectedClass() {
   const n = state.ui?.minCountByClass?.[selectedClassId];
@@ -421,7 +440,7 @@ function getMinPositiveForSelectedClass() {
 
 function setMinCountForSelectedClass(value) {
   const n = Math.max(0, Math.floor(Number(value) || 0));
-  if (!state.ui) state.ui = { minCountByClass: {} };
+  if (!state.ui) state.ui = defaultState().ui;
   if (!state.ui.minCountByClass) state.ui.minCountByClass = {};
   state.ui.minCountByClass[selectedClassId] = n;
   saveState(state);
@@ -429,7 +448,7 @@ function setMinCountForSelectedClass(value) {
 
 function setMinPositiveForSelectedClass(value) {
   const n = Math.max(0, Math.floor(Number(value) || 0));
-  if (!state.ui) state.ui = { minCountByClass: {}, minPositiveByClass: {} };
+  if (!state.ui) state.ui = defaultState().ui;
   if (!state.ui.minPositiveByClass) state.ui.minPositiveByClass = {};
   state.ui.minPositiveByClass[selectedClassId] = n;
   saveState(state);
@@ -437,6 +456,57 @@ function setMinPositiveForSelectedClass(value) {
 
 function setStatus(text) {
   status.textContent = text;
+}
+
+function setLanguagePreference(value) {
+  if (!state.ui) state.ui = defaultState().ui;
+  const next = typeof value === "string" && value ? value : "auto";
+  state.ui.language = next;
+  saveState(state);
+  applyI18n();
+}
+
+function applyI18n() {
+  const lang = getResolvedLanguage();
+  document.documentElement.lang = lang;
+
+  const nodes = document.querySelectorAll("[data-i18n]");
+  for (const node of nodes) {
+    const key = node.getAttribute("data-i18n");
+    if (key) node.textContent = t(key);
+  }
+
+  const attrNodes = document.querySelectorAll("[data-i18n-attr]");
+  for (const node of attrNodes) {
+    const raw = node.getAttribute("data-i18n-attr");
+    if (!raw) continue;
+    const pairs = raw.split("|");
+    for (const pair of pairs) {
+      const [attr, key] = pair.split(":");
+      if (!attr || !key) continue;
+      node.setAttribute(attr, t(key));
+    }
+  }
+
+  if (languageSelect) {
+    const pref = getLanguagePreference();
+    languageSelect.value = SUPPORTED_LANGUAGES.includes(pref) || pref === "auto" ? pref : "auto";
+  }
+
+  renderStudents();
+  if (timerDialog.hasAttribute("open") || timerDialog.open) {
+    renderTimerModal();
+  }
+  if ((historyDialog.hasAttribute("open") || historyDialog.open) && lastHistoryStudentId) {
+    const cls = getSelectedClass();
+    const student = cls.students.find((s) => s.id === lastHistoryStudentId);
+    if (student) renderHistoryModal(student);
+  }
+  if (classHistoryDialog.hasAttribute("open") || classHistoryDialog.open) {
+    renderClassHistoryModal();
+  }
+
+  document.dispatchEvent(new CustomEvent("i18n:change", { detail: { lang } }));
 }
 
 /**
@@ -469,7 +539,7 @@ function exportBackup() {
   const json = JSON.stringify(payload, null, 2);
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   downloadTextFile(`eduavisos-backup-${ts}.json`, json, "application/json;charset=utf-8");
-  setTransientStatus("Copia exportada");
+  setTransientStatus(t("status.backup.exported"));
 }
 
 /** @param {any} payload */
@@ -485,13 +555,11 @@ function extractStateFromBackupPayload(payload) {
 async function importBackupFromUi() {
   const file = importBackupFile.files?.[0];
   if (!file) {
-    setTransientStatus("Selecciona un .json primero");
+    setTransientStatus(t("status.backup.selectJson"));
     return;
   }
 
-  const ok = confirm(
-    "Esto reemplazará TODOS tus datos (todas las clases) por la copia importada. ¿Continuar?"
-  );
+  const ok = confirm(t("confirm.backup.import"));
   if (!ok) return;
 
   const text = await readFileAsText(file);
@@ -499,13 +567,13 @@ async function importBackupFromUi() {
   try {
     parsed = JSON.parse(text);
   } catch {
-    setTransientStatus("El archivo no es JSON válido", 4000);
+    setTransientStatus(t("error.backup.invalidJson"), 4000);
     return;
   }
 
   const nextState = extractStateFromBackupPayload(parsed);
   if (!nextState) {
-    setTransientStatus("Formato de copia no reconocido", 4000);
+    setTransientStatus(t("error.backup.formatUnknown"), 4000);
     return;
   }
 
@@ -523,7 +591,7 @@ async function importBackupFromUi() {
   renderStudents();
 
   importBackupFile.value = "";
-  setTransientStatus("Copia importada");
+  setTransientStatus(t("status.backup.imported"));
 }
 
 function setTransientStatus(text, ms = 2500) {
@@ -569,15 +637,7 @@ function syncTimerControls() {
 
 function startGlobalTimer() {
   if (!state.ui) {
-    state.ui = {
-      minCountByClass: {},
-      minPositiveByClass: {},
-      timerRunning: false,
-      timerFrozenAt: Date.now(),
-      negMinutesPerPoint: DEFAULT_NEG_MINUTES_PER_POINT,
-      posMinutesPerPoint: DEFAULT_POS_MINUTES_PER_POINT,
-      lastTickNow: Date.now(),
-    };
+    state.ui = defaultState().ui;
   }
 
   if (state.ui.timerRunning) return;
@@ -607,20 +667,12 @@ function startGlobalTimer() {
   syncTimerControls();
   renderStudents();
   openTimerModalIfNeeded();
-  setTransientStatus("Temporizador iniciado");
+  setTransientStatus(t("status.timerStarted"));
 }
 
 function pauseGlobalTimer() {
   if (!state.ui) {
-    state.ui = {
-      minCountByClass: {},
-      minPositiveByClass: {},
-      timerRunning: false,
-      timerFrozenAt: Date.now(),
-      negMinutesPerPoint: DEFAULT_NEG_MINUTES_PER_POINT,
-      posMinutesPerPoint: DEFAULT_POS_MINUTES_PER_POINT,
-      lastTickNow: Date.now(),
-    };
+    state.ui = defaultState().ui;
   }
   if (!state.ui.timerRunning) return;
 
@@ -630,7 +682,7 @@ function pauseGlobalTimer() {
   saveState(state);
   syncTimerControls();
   renderStudents();
-  setTransientStatus("Tiempo en pausa");
+  setTransientStatus(t("status.timerPaused"));
 }
 
 function renderTimerModal() {
@@ -716,7 +768,7 @@ function saveClassName() {
   const cls = getSelectedClass();
   const next = (classNameInput.value ?? "").trim();
   if (!next) {
-    alert("El nombre de la clase no puede estar vacío.");
+    alert(t("alert.classNameEmpty"));
     classNameInput.value = cls.name;
     return;
   }
@@ -724,7 +776,7 @@ function saveClassName() {
   saveState(state);
   renderClassSelect();
   renderClassNameInput();
-  setStatus("Nombre de clase guardado");
+  setStatus(t("status.classNameSaved"));
 }
 
 function renderStudents() {
@@ -749,9 +801,9 @@ function renderStudents() {
     const parts = [];
     if (minNeg > 0) parts.push(`☹︎≥${minNeg}`);
     if (minPos > 0) parts.push(`🙂≥${minPos}`);
-    setStatus(`Mostrando ${visibleTotal}/${total} (${parts.join(" · ")})`);
+    setStatus(t("status.showing", { visible: visibleTotal, total, filters: parts.join(" · ") }));
   } else {
-    setStatus(`${total} alumnos`);
+    setStatus(t("status.total", { total }));
   }
 
   studentList.innerHTML = "";
@@ -763,9 +815,9 @@ function renderStudents() {
     const parts = [];
     if (minNeg > 0) parts.push(`☹︎ ≥ ${minNeg}`);
     if (minPos > 0) parts.push(`🙂 ≥ ${minPos}`);
-    emptyState.textContent = `No hay alumnos que cumplan el filtro (${parts.join(" y ")}). Baja el filtro o suma avisos.`;
+    emptyState.textContent = t("empty.filter", { filters: parts.join(` ${t("join.and")} `) });
   } else {
-    emptyState.textContent = "Aún no hay alumnos en esta clase. Importa una lista arriba.";
+    emptyState.textContent = t("empty.noStudents");
   }
 
   for (const student of visibleStudents) {
@@ -778,7 +830,7 @@ function renderStudents() {
     const nameBtn = document.createElement("button");
     nameBtn.type = "button";
     nameBtn.className = "nameBtn";
-    nameBtn.setAttribute("aria-label", `Sumar +1 a ${student.name}`);
+    nameBtn.setAttribute("aria-label", t("aria.addOne", { name: student.name }));
 
     const name = document.createElement("span");
     name.className = "name";
@@ -803,7 +855,7 @@ function renderStudents() {
     const negCount = document.createElement("span");
     negCount.className = "count";
     negCount.textContent = `☹︎ ${student.count ?? 0}`;
-    negCount.setAttribute("aria-label", `Avisos negativos: ${student.count ?? 0}`);
+    negCount.setAttribute("aria-label", t("aria.negCount", { count: student.count ?? 0 }));
 
     const timer = document.createElement("span");
     timer.className = "timer";
@@ -812,20 +864,20 @@ function renderStudents() {
     const remainingMs = getNegativeRemainingMs(student);
     const icon = running ? "⏱" : "⏸";
     timer.textContent = `${icon} ${remainingMs > 0 ? formatRemaining(remainingMs) : "--:--"}`;
-    timer.setAttribute("aria-label", "Tiempo restante por avisos negativos");
+    timer.setAttribute("aria-label", t("aria.timerRemaining"));
 
     timer.dataset.studentId = student.id;
 
     const posCount = document.createElement("span");
     posCount.className = "count";
     posCount.textContent = `🙂 ${student.positiveCount ?? 0}`;
-    posCount.setAttribute("aria-label", `Avisos positivos: ${student.positiveCount ?? 0}`);
+    posCount.setAttribute("aria-label", t("aria.posCount", { count: student.positiveCount ?? 0 }));
 
     const negBtn = document.createElement("button");
     negBtn.type = "button";
     negBtn.className = "miniBtn";
     negBtn.textContent = "+☹︎";
-    negBtn.setAttribute("aria-label", `Sumar aviso negativo a ${student.name}`);
+    negBtn.setAttribute("aria-label", t("aria.addNeg", { name: student.name }));
 
     negBtn.addEventListener("click", () => {
       addNegativePoint(student);
@@ -843,7 +895,7 @@ function renderStudents() {
     posBtn.type = "button";
     posBtn.className = "miniBtn";
     posBtn.textContent = "+🙂";
-    posBtn.setAttribute("aria-label", `Sumar aviso positivo a ${student.name}`);
+    posBtn.setAttribute("aria-label", t("aria.addPos", { name: student.name }));
 
     posBtn.addEventListener("click", () => {
       student.positiveCount = (student.positiveCount ?? 0) + 1;
@@ -856,8 +908,8 @@ function renderStudents() {
     historyBtn.type = "button";
     historyBtn.className = "miniBtn";
     historyBtn.textContent = "🕘";
-    historyBtn.title = "Histórico";
-    historyBtn.setAttribute("aria-label", `Ver histórico de ${student.name}`);
+    historyBtn.title = t("history.title");
+    historyBtn.setAttribute("aria-label", t("aria.viewHistory", { name: student.name }));
     historyBtn.addEventListener("click", () => {
       openHistoryModal(student);
     });
@@ -866,16 +918,16 @@ function renderStudents() {
     editBtn.type = "button";
     editBtn.className = "miniBtn";
     editBtn.textContent = "✏️";
-    editBtn.title = "Editar";
-    editBtn.setAttribute("aria-label", `Editar nombre: ${student.name}`);
+    editBtn.title = t("action.edit");
+    editBtn.setAttribute("aria-label", t("aria.editName", { name: student.name }));
 
     editBtn.addEventListener("click", () => {
       const cls = getSelectedClass();
-      const next = prompt(`Nuevo nombre para ${student.name}:`, student.name);
+      const next = prompt(t("prompt.newName", { name: student.name }), student.name);
       if (next === null) return;
       const trimmed = next.trim();
       if (!trimmed) {
-        alert("El nombre no puede estar vacío.");
+        alert(t("alert.nameEmpty"));
         return;
       }
 
@@ -884,26 +936,26 @@ function renderStudents() {
         (s) => s.id !== student.id && (s.name ?? "").toLocaleLowerCase() === key
       );
       if (clash) {
-        alert("Ya existe un alumno con ese nombre en esta clase.");
+        alert(t("alert.nameExists"));
         return;
       }
 
       student.name = trimmed;
       saveState(state);
       renderStudents();
-      setTransientStatus("Nombre actualizado");
+      setTransientStatus(t("status.nameUpdated"));
     });
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "miniBtn miniBtn--danger";
     deleteBtn.textContent = "🗑️";
-    deleteBtn.title = "Eliminar";
-    deleteBtn.setAttribute("aria-label", `Eliminar alumno: ${student.name}`);
+    deleteBtn.title = t("action.delete");
+    deleteBtn.setAttribute("aria-label", t("aria.deleteStudent", { name: student.name }));
 
     deleteBtn.addEventListener("click", () => {
       const cls = getSelectedClass();
-      const ok = confirm(`¿Eliminar a ${student.name} de ${cls.name}?`);
+      const ok = confirm(t("confirm.deleteStudent", { student: student.name, className: cls.name }));
       if (!ok) return;
       cls.students = cls.students.filter((s) => s.id !== student.id);
       saveState(state);
@@ -931,7 +983,7 @@ function formatEventTs(ts) {
 }
 
 /** @param {Student} student */
-function openHistoryModal(student) {
+function renderHistoryModal(student) {
   historySubtitle.textContent = `${student.name} · ${getSelectedClass().name}`;
   const events = Array.isArray(student.history) ? student.history.slice() : [];
   events.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
@@ -961,6 +1013,11 @@ function openHistoryModal(student) {
     li.appendChild(right);
     historyList.appendChild(li);
   }
+}
+
+function openHistoryModal(student) {
+  lastHistoryStudentId = student.id;
+  renderHistoryModal(student);
 
   if (typeof historyDialog.showModal === "function") {
     historyDialog.showModal();
@@ -969,9 +1026,9 @@ function openHistoryModal(student) {
   }
 }
 
-function openClassHistoryModal() {
+function renderClassHistoryModal() {
   const cls = getSelectedClass();
-  classHistorySubtitle.textContent = `Resumen por alumno (totales de ☹︎ y 🙂) · ${cls.name}`;
+  classHistorySubtitle.textContent = `${t("classHistory.subtitle")} · ${cls.name}`;
 
   const rows = cls.students
     .map((s) => {
@@ -1021,7 +1078,10 @@ function openClassHistoryModal() {
     li.appendChild(right);
     classHistoryList.appendChild(li);
   }
+}
 
+function openClassHistoryModal() {
+  renderClassHistoryModal();
   if (typeof classHistoryDialog.showModal === "function") {
     classHistoryDialog.showModal();
   } else {
@@ -1131,7 +1191,7 @@ function applyImportToSelectedClass(names) {
 function readFileAsText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    reader.onerror = () => reject(new Error(t("file.error.read")));
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.readAsText(file);
   });
@@ -1218,6 +1278,10 @@ posMinutesPerPointInput.addEventListener("input", () => {
   renderStudents();
 });
 
+languageSelect.addEventListener("change", () => {
+  setLanguagePreference(languageSelect.value);
+});
+
 timerPlayBtn.addEventListener("click", () => {
   startGlobalTimer();
 });
@@ -1254,7 +1318,7 @@ openClassHistoryBtn.addEventListener("click", () => {
   try {
     openClassHistoryModal();
   } catch (e) {
-    setTransientStatus(e instanceof Error ? e.message : "Error al abrir histórico", 4000);
+    setTransientStatus(e instanceof Error ? e.message : t("error.history"), 4000);
   }
 });
 
@@ -1273,7 +1337,7 @@ classHistoryDialog.addEventListener("click", (e) => {
 resetClassBtn.addEventListener("click", () => {
   const cls = getSelectedClass();
   if (!cls.students.length) return;
-  const ok = confirm(`¿Reiniciar contadores de ${cls.name}?`);
+  const ok = confirm(t("confirm.resetCounters", { className: cls.name }));
   if (!ok) return;
   resetMarksForSelectedClass();
 });
@@ -1297,28 +1361,28 @@ importApplyBtn.addEventListener("click", async () => {
     let names = [];
     if (pdf) {
       // Prioridad al PDF si se ha seleccionado.
-      setTransientStatus("Leyendo PDF…", 5000);
+      setTransientStatus(t("status.pdf.reading"), 5000);
       const pdfText = await extractTextFromPdf(pdf);
       names = parseNamesFromPdfText(pdfText);
     } else {
       names = parseNames(text);
     }
     if (!names.length) {
-      setTransientStatus("No se detectaron nombres para importar");
+      setTransientStatus(t("status.import.noNames"));
       return;
     }
 
     const cls = getSelectedClass();
     const result = applyImportToSelectedClass(names);
     setTransientStatus(
-      `Importados: ${result.added} nuevos · ${result.skipped} duplicados · ${cls.name}`
+      t("status.import.done", { added: result.added, skipped: result.skipped, className: cls.name })
     );
 
     // Cierra el modal tras importar
     importDialog.close?.();
     importDialog.removeAttribute("open");
   } catch (e) {
-    setTransientStatus(e instanceof Error ? e.message : "Error al importar", 4000);
+    setTransientStatus(e instanceof Error ? e.message : t("error.import"), 4000);
   }
 });
 
@@ -1326,7 +1390,7 @@ exportBackupBtn.addEventListener("click", () => {
   try {
     exportBackup();
   } catch (e) {
-    setTransientStatus(e instanceof Error ? e.message : "Error al exportar", 4000);
+    setTransientStatus(e instanceof Error ? e.message : t("error.export"), 4000);
   }
 });
 
@@ -1337,7 +1401,7 @@ importBackupBtn.addEventListener("click", async () => {
     importDialog.close?.();
     importDialog.removeAttribute("open");
   } catch (e) {
-    setTransientStatus(e instanceof Error ? e.message : "Error al importar", 4000);
+    setTransientStatus(e instanceof Error ? e.message : t("error.import"), 4000);
   }
 });
 
@@ -1349,7 +1413,7 @@ renderClassNameInput();
 syncTimerControls();
 negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
 posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
-renderStudents();
+applyI18n();
 
 // ------------------------------
 // Semáforo de sonido (micrófono)
@@ -1507,6 +1571,15 @@ function initSoundSemaphore() {
   /** @type {"green"|"amber"|"red"|"off"} */
   let currentState = "off";
 
+  let statusKey = "sound.status.initial";
+  let statusVars = undefined;
+
+  function setSoundStatus(key, vars) {
+    statusKey = key;
+    statusVars = vars;
+    statusText.textContent = t(key, vars);
+  }
+
   /** @type {AudioContext|null} */
   let audioCtx = null;
   /** @type {MediaStream|null} */
@@ -1592,7 +1665,7 @@ function initSoundSemaphore() {
   function applyHideConfigToPanel() {
     const hide = Boolean(ui.hideConfig);
     soundPanel.setAttribute("data-hide-config", hide ? "1" : "0");
-    toggleConfigBtn.textContent = hide ? "Mostrar configuración" : "Ocultar configuración";
+    toggleConfigBtn.textContent = hide ? t("sound.toggle.show") : t("sound.toggle.hide");
   }
 
   function clampGain(v) {
@@ -1664,7 +1737,7 @@ function initSoundSemaphore() {
 
   function ensureMicOrExplain() {
     if (!analyser) {
-      statusText.textContent = "Activa el micrófono primero (botón Activar).";
+      setSoundStatus("sound.status.enableFirst");
       return false;
     }
     return true;
@@ -1676,7 +1749,7 @@ function initSoundSemaphore() {
     ui.silenceDb = Math.round(lastDisplayedDb);
     ui.talkDb = undefined;
     saveSoundUiState(ui);
-    statusText.textContent = `Silencio calibrado: nivel ${dbToLevel(lastDisplayedDb)}. Ahora pulsa “Calibrar aula (hablando normal)”.`;
+    setSoundStatus("sound.status.silenceCalibrated", { level: dbToLevel(lastDisplayedDb) });
     updatePresetButtons();
   }
 
@@ -1684,7 +1757,7 @@ function initSoundSemaphore() {
     if (!ensureMicOrExplain()) return;
     const silence = Number(ui.silenceDb);
     if (!Number.isFinite(silence)) {
-      statusText.textContent = "Primero pulsa “Calibrar silencio (verde)”.";
+      setSoundStatus("sound.status.pressSilence");
       return;
     }
 
@@ -1702,7 +1775,10 @@ function initSoundSemaphore() {
     const redMinLevel = Math.round(talkLevel + 6);
 
     setManualThresholds(greenMaxLevel, redMinLevel);
-    statusText.textContent = `Calibrado. Verde < ${greenMaxLevel} · Rojo ≥ ${Math.round(Math.max(redMinLevel, greenMaxLevel + 3))} (nivel).`;
+    setSoundStatus("sound.status.calibrated", {
+      green: greenMaxLevel,
+      red: Math.round(Math.max(redMinLevel, greenMaxLevel + 3)),
+    });
   }
 
   function setSoundColors(nextGreen, nextAmber, nextRed) {
@@ -1715,7 +1791,7 @@ function initSoundSemaphore() {
 
   async function enableMic() {
     if (!navigator.mediaDevices?.getUserMedia) {
-      statusText.textContent = "Este navegador no soporta acceso al micrófono.";
+      setSoundStatus("sound.error.noMicSupport");
       return;
     }
 
@@ -1724,7 +1800,7 @@ function initSoundSemaphore() {
 
     try {
       enableBtn.disabled = true;
-      enableBtn.textContent = "Activando…";
+      enableBtn.textContent = t("sound.status.activating");
 
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       stream = await navigator.mediaDevices.getUserMedia({
@@ -1755,8 +1831,8 @@ function initSoundSemaphore() {
 
       await audioCtx.resume?.();
 
-      statusText.textContent = "Sensor activo. Ajusta el umbral según necesites.";
-      enableBtn.textContent = "Desactivar";
+      setSoundStatus("sound.status.active");
+      enableBtn.textContent = t("sound.button.disable");
       enableBtn.disabled = false;
       setPanelState("green");
 
@@ -1764,10 +1840,10 @@ function initSoundSemaphore() {
 
       tick();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "No se pudo activar el micrófono";
-      statusText.textContent = `No se pudo activar: ${msg}`;
+      const msg = e instanceof Error ? e.message : t("sound.error.activate");
+      setSoundStatus("sound.error.activateWithMsg", { msg });
       enableBtn.disabled = false;
-      enableBtn.textContent = "Activar";
+      enableBtn.textContent = t("sound.button.enable");
       setPanelState("off");
     }
   }
@@ -1802,8 +1878,8 @@ function initSoundSemaphore() {
     lastDisplayedDb = -100;
 
     setPanelState("off");
-    statusText.textContent = "Sensor desactivado.";
-    enableBtn.textContent = "Activar";
+    setSoundStatus("sound.status.disabled");
+    enableBtn.textContent = t("sound.button.enable");
     enableBtn.disabled = false;
   }
 
@@ -1858,10 +1934,16 @@ function initSoundSemaphore() {
 
     if (next !== currentState) {
       setPanelState(next);
-      if (next === "green") statusText.textContent = "VERDE: el ruido está en el umbral correcto.";
-      if (next === "amber") statusText.textContent = "ÁMBAR: el ruido es aceptable, pero cerca del límite.";
-      if (next === "red") statusText.textContent = "ROJO: nos hemos pasado con el ruido.";
+      if (next === "green") setSoundStatus("sound.level.green");
+      if (next === "amber") setSoundStatus("sound.level.amber");
+      if (next === "red") setSoundStatus("sound.level.red");
     }
+  }
+
+  function refreshSoundI18n() {
+    applyHideConfigToPanel();
+    enableBtn.textContent = analyser || stream || audioCtx ? t("sound.button.disable") : t("sound.button.enable");
+    statusText.textContent = t(statusKey, statusVars);
   }
 
   // Listeners
@@ -1945,7 +2027,7 @@ function initSoundSemaphore() {
   // Estado inicial UI
   setPanelState("off");
   updatePresetButtons();
-  statusText.textContent = "Pulsa “Activar” y permite el micrófono.";
+  setSoundStatus("sound.status.initial");
 
   // Limpieza si la pestaña se oculta (evita consumo innecesario).
   document.addEventListener("visibilitychange", () => {
@@ -1956,6 +2038,8 @@ function initSoundSemaphore() {
       if (analyser && !rafId) tick();
     }
   });
+
+  document.addEventListener("i18n:change", refreshSoundI18n);
 }
 
 // ------------------------------
@@ -2006,16 +2090,16 @@ function initWorkModePanel() {
 
     if (next === "green") {
       emoji.textContent = "🤫";
-      label.textContent = "Explicación";
-      hint.textContent = "Objetivo: semáforo en VERDE (silencio).";
+      label.textContent = t("mode.label.explain");
+      hint.textContent = t("mode.hint.explain");
     } else if (next === "amber") {
       emoji.textContent = "🤝";
-      label.textContent = "Trabajo";
-      hint.textContent = "Objetivo: semáforo en ÁMBAR (voz baja).";
+      label.textContent = t("mode.label.work");
+      hint.textContent = t("mode.hint.work");
     } else {
       emoji.textContent = "🗣️";
-      label.textContent = "Debate";
-      hint.textContent = "Objetivo: semáforo en ROJO solo puntualmente (moderación).";
+      label.textContent = t("mode.label.debate");
+      hint.textContent = t("mode.hint.debate");
     }
   }
 
@@ -2033,6 +2117,10 @@ function initWorkModePanel() {
   });
 
   applyMode(loadMode());
+
+  document.addEventListener("i18n:change", () => {
+    applyMode(mode);
+  });
 }
 
 // ------------------------------

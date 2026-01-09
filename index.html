@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>EduAvisos</title>
+    <title data-i18n="app.title">EduAvisos</title>
 
     <!-- Anti-caché (útil en desarrollo con http.server / recargas) -->
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
@@ -18,7 +18,7 @@
 
         const link = document.createElement("link");
         link.rel = "stylesheet";
-        link.href = `styles.css?v=${v}`;
+        link.href = `css/styles.css?v=${v}`;
         document.head.appendChild(link);
       })();
     </script>
@@ -26,28 +26,28 @@
   <body>
     <header class="header">
       <div class="container header__row">
-        <h1 class="title">EduAvisos</h1>
+        <h1 class="title" data-i18n="app.title">EduAvisos</h1>
         <div class="controls">
-          <div class="viewToggles" aria-label="Vista">
-            <span class="field__label">Vista</span>
-            <div class="viewToggles__buttons" role="group" aria-label="Mostrar u ocultar columnas">
-              <button id="toggleLeftColBtn" class="btn btn--secondary" type="button" aria-pressed="true">Alumnos</button>
-              <button id="toggleMidColBtn" class="btn btn--secondary" type="button" aria-pressed="true">Semáforo</button>
-              <button id="toggleRightColBtn" class="btn btn--secondary" type="button" aria-pressed="true">Modo</button>
+          <div class="viewToggles" aria-label="Vista" data-i18n-attr="aria-label:app.view">
+            <span class="field__label" data-i18n="app.view">Vista</span>
+            <div class="viewToggles__buttons" role="group" aria-label="Mostrar u ocultar columnas" data-i18n-attr="aria-label:app.view.toggles">
+              <button id="toggleLeftColBtn" class="btn btn--secondary" type="button" aria-pressed="true" data-i18n="app.students">Alumnos</button>
+              <button id="toggleMidColBtn" class="btn btn--secondary" type="button" aria-pressed="true" data-i18n="app.semaphore">Semáforo</button>
+              <button id="toggleRightColBtn" class="btn btn--secondary" type="button" aria-pressed="true" data-i18n="app.mode">Modo</button>
             </div>
           </div>
 
           <label class="field">
-            <span class="field__label">Clase</span>
-            <select id="classSelect" class="field__input" aria-label="Seleccionar clase"></select>
+            <span class="field__label" data-i18n="app.class">Clase</span>
+            <select id="classSelect" class="field__input" aria-label="Seleccionar clase" data-i18n-attr="aria-label:app.class.select"></select>
           </label>
 
-          <button id="resetClassBtn" class="btn btn--secondary" type="button">Reiniciar contadores</button>
+          <button id="resetClassBtn" class="btn btn--secondary" type="button" data-i18n="app.resetCounters">Reiniciar contadores</button>
 
-          <button id="timerPlayBtn" class="btn btn--secondary iconBtn" type="button" aria-label="Iniciar/Reanudar tiempo" title="Play">▶︎</button>
-          <button id="timerPauseBtn" class="btn btn--secondary iconBtn" type="button" aria-label="Pausar tiempo" title="Pausa">⏸</button>
+          <button id="timerPlayBtn" class="btn btn--secondary iconBtn" type="button" aria-label="Iniciar/Reanudar tiempo" title="Play" data-i18n-attr="aria-label:app.timer.play|title:app.timer.play.title">▶︎</button>
+          <button id="timerPauseBtn" class="btn btn--secondary iconBtn" type="button" aria-label="Pausar tiempo" title="Pausa" data-i18n-attr="aria-label:app.timer.pause|title:app.timer.pause.title">⏸</button>
 
-          <button id="openImportBtn" class="btn iconBtn" type="button" aria-label="Abrir configuración" title="Configuración">⚙︎</button>
+          <button id="openImportBtn" class="btn iconBtn" type="button" aria-label="Abrir configuración" title="Configuración" data-i18n-attr="aria-label:app.settings.open|title:app.settings.title">⚙︎</button>
         </div>
       </div>
     </header>
@@ -57,261 +57,273 @@
         <div class="split__left">
       <dialog id="importDialog" class="modal" aria-labelledby="importDialogTitle">
         <div class="modal__header">
-          <h3 id="importDialogTitle" class="modal__title">Configuración</h3>
-          <button id="closeImportBtn" class="btn btn--secondary" type="button">Cerrar</button>
+          <h3 id="importDialogTitle" class="modal__title" data-i18n="config.title">Configuración</h3>
+          <button id="closeImportBtn" class="btn btn--secondary" type="button" data-i18n="action.close">Cerrar</button>
         </div>
 
         <div class="config">
           <div class="config__row">
             <label class="field field--grow">
-              <span class="field__label">Nombre de clase (para la clase seleccionada)</span>
-              <input id="className" class="field__input" type="text" placeholder="Ej: 1ºA" />
+              <span class="field__label" data-i18n="config.className.label">Nombre de clase (para la clase seleccionada)</span>
+              <input id="className" class="field__input" type="text" placeholder="Ej: 1ºA" data-i18n-attr="placeholder:config.className.placeholder" />
             </label>
-            <button id="saveClassNameBtn" class="btn" type="button">Guardar nombre</button>
+            <button id="saveClassNameBtn" class="btn" type="button" data-i18n="config.className.save">Guardar nombre</button>
           </div>
 
           <div class="config__row">
             <label class="field">
-              <span class="field__label">Minutos por ☹︎</span>
+              <span class="field__label" data-i18n="config.language.label">Idioma de la interfaz</span>
+              <select id="languageSelect" class="field__input">
+                <option value="auto" data-i18n="config.language.auto">Automático (navegador)</option>
+                <option value="es" data-i18n="config.language.es">Español</option>
+                <option value="ca" data-i18n="config.language.ca">Català</option>
+                <option value="en" data-i18n="config.language.en">English</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="config__row">
+            <label class="field">
+              <span class="field__label" data-i18n="config.negMinutes">Minutos por ☹︎</span>
               <input id="negMinutesPerPoint" class="field__input field__input--small" type="number" min="0" step="1" value="5" />
             </label>
             <label class="field">
-              <span class="field__label">Minutos por 🙂</span>
+              <span class="field__label" data-i18n="config.posMinutes">Minutos por 🙂</span>
               <input id="posMinutesPerPoint" class="field__input field__input--small" type="number" min="0" step="1" value="5" />
             </label>
           </div>
         </div>
 
-        <p class="modal__subtitle">Administración: exporta una copia de seguridad de tus datos (todas las clases) o impórtala para restaurar.</p>
+        <p class="modal__subtitle" data-i18n="config.admin.subtitle">Administración: exporta una copia de seguridad de tus datos (todas las clases) o impórtala para restaurar.</p>
 
         <div class="config">
           <div class="config__row">
-            <button id="exportBackupBtn" class="btn" type="button">Exportar copia (.json)</button>
+            <button id="exportBackupBtn" class="btn" type="button" data-i18n="config.export">Exportar copia (.json)</button>
 
             <label class="field">
-              <span class="field__label">Importar copia (.json)</span>
+              <span class="field__label" data-i18n="config.import.label">Importar copia (.json)</span>
               <input id="importBackupFile" class="field__input" type="file" accept="application/json,.json" />
             </label>
 
-            <button id="importBackupBtn" class="btn btn--secondary" type="button">Importar copia</button>
+            <button id="importBackupBtn" class="btn btn--secondary" type="button" data-i18n="config.import.button">Importar copia</button>
           </div>
         </div>
 
-        <p class="modal__subtitle">Importa alumnos: pega una lista (1 por línea) o carga un archivo .txt/.csv. Se AÑADEN a la clase actual (no se borra lo existente).</p>
+        <p class="modal__subtitle" data-i18n="config.importStudents.subtitle">Importa alumnos: pega una lista (1 por línea) o carga un archivo .txt/.csv. Se AÑADEN a la clase actual (no se borra lo existente).</p>
 
         <div class="import">
           <label class="field field--grow">
-            <span class="field__label">Pegar lista</span>
+            <span class="field__label" data-i18n="config.importPaste.label">Pegar lista</span>
             <textarea id="importTextarea" class="field__input field__textarea" rows="8" placeholder="Ejemplo:
 Ana Pérez
 Juan López
-María García"></textarea>
+María García" data-i18n-attr="placeholder:config.importPaste.placeholder"></textarea>
           </label>
 
           <div class="import__actions">
             <label class="field">
-              <span class="field__label">Archivo</span>
+              <span class="field__label" data-i18n="config.importFile.label">Archivo</span>
               <input id="importFile" class="field__input" type="file" accept=".txt,.csv,text/plain,text/csv" />
             </label>
 
             <label class="field">
-              <span class="field__label">PDF (verReport)</span>
+              <span class="field__label" data-i18n="config.importPdf.label">PDF (verReport)</span>
               <input id="importPdf" class="field__input" type="file" accept="application/pdf,.pdf" />
             </label>
 
-            <button id="importApplyBtn" class="btn" type="button">Importar en esta clase</button>
-            <button id="importClearBtn" class="btn btn--secondary" type="button">Limpiar caja</button>
+            <button id="importApplyBtn" class="btn" type="button" data-i18n="config.import.apply">Importar en esta clase</button>
+            <button id="importClearBtn" class="btn btn--secondary" type="button" data-i18n="config.import.clear">Limpiar caja</button>
           </div>
         </div>
       </dialog>
 
       <dialog id="timerDialog" class="modal" aria-labelledby="timerDialogTitle">
         <div class="modal__header">
-          <h3 id="timerDialogTitle" class="modal__title">Tiempo pendiente (☹︎)</h3>
-          <button id="closeTimerBtn" class="btn btn--secondary" type="button">Cerrar</button>
+          <h3 id="timerDialogTitle" class="modal__title" data-i18n="timer.title">Tiempo pendiente (☹︎)</h3>
+          <button id="closeTimerBtn" class="btn btn--secondary" type="button" data-i18n="action.close">Cerrar</button>
         </div>
 
-        <p class="modal__subtitle">Alumnos con tiempo pendiente en la clase actual. La cuenta atrás se actualiza en vivo mientras el temporizador está en Play.</p>
+        <p class="modal__subtitle" data-i18n="timer.subtitle">Alumnos con tiempo pendiente en la clase actual. La cuenta atrás se actualiza en vivo mientras el temporizador está en Play.</p>
 
-        <ul id="timerStudentList" class="list" aria-label="Alumnos con tiempo pendiente"></ul>
-        <div id="timerEmpty" class="empty" hidden>No hay alumnos con tiempo pendiente en esta clase.</div>
+        <ul id="timerStudentList" class="list" aria-label="Alumnos con tiempo pendiente" data-i18n-attr="aria-label:timer.list.aria"></ul>
+        <div id="timerEmpty" class="empty" hidden data-i18n="timer.empty">No hay alumnos con tiempo pendiente en esta clase.</div>
       </dialog>
 
       <dialog id="historyDialog" class="modal" aria-labelledby="historyDialogTitle">
         <div class="modal__header">
-          <h3 id="historyDialogTitle" class="modal__title">Histórico</h3>
-          <button id="closeHistoryBtn" class="btn btn--secondary" type="button">Cerrar</button>
+          <h3 id="historyDialogTitle" class="modal__title" data-i18n="history.title">Histórico</h3>
+          <button id="closeHistoryBtn" class="btn btn--secondary" type="button" data-i18n="action.close">Cerrar</button>
         </div>
 
         <p id="historySubtitle" class="modal__subtitle"></p>
 
-        <ul id="historyList" class="list" aria-label="Histórico del alumno"></ul>
-        <div id="historyEmpty" class="empty" hidden>Este alumno aún no tiene eventos en el histórico.</div>
+        <ul id="historyList" class="list" aria-label="Histórico del alumno" data-i18n-attr="aria-label:history.list.aria"></ul>
+        <div id="historyEmpty" class="empty" hidden data-i18n="history.empty">Este alumno aún no tiene eventos en el histórico.</div>
       </dialog>
 
       <dialog id="classHistoryDialog" class="modal" aria-labelledby="classHistoryDialogTitle">
         <div class="modal__header">
-          <h3 id="classHistoryDialogTitle" class="modal__title">Histórico de la clase</h3>
-          <button id="closeClassHistoryBtn" class="btn btn--secondary" type="button">Cerrar</button>
+          <h3 id="classHistoryDialogTitle" class="modal__title" data-i18n="classHistory.title">Histórico de la clase</h3>
+          <button id="closeClassHistoryBtn" class="btn btn--secondary" type="button" data-i18n="action.close">Cerrar</button>
         </div>
 
-        <p id="classHistorySubtitle" class="modal__subtitle">Resumen por alumno (totales de ☹︎ y 🙂).</p>
+        <p id="classHistorySubtitle" class="modal__subtitle" data-i18n="classHistory.subtitle">Resumen por alumno (totales de ☹︎ y 🙂).</p>
 
-        <ul id="classHistoryList" class="list" aria-label="Resumen de la clase"></ul>
-        <div id="classHistoryEmpty" class="empty" hidden>Esta clase aún no tiene puntos en el histórico.</div>
+        <ul id="classHistoryList" class="list" aria-label="Resumen de la clase" data-i18n-attr="aria-label:classHistory.list.aria"></ul>
+        <div id="classHistoryEmpty" class="empty" hidden data-i18n="classHistory.empty">Esta clase aún no tiene puntos en el histórico.</div>
       </dialog>
 
       <section class="panel" aria-labelledby="listTitle">
         <div class="panel__header">
           <div class="panel__headerRow">
-            <h2 id="listTitle" class="panel__title">Alumnos</h2>
-            <button id="openClassHistoryBtn" class="btn btn--secondary" type="button">Histórico de la clase</button>
+            <h2 id="listTitle" class="panel__title" data-i18n="list.title">Alumnos</h2>
+            <button id="openClassHistoryBtn" class="btn btn--secondary" type="button" data-i18n="list.classHistory">Histórico de la clase</button>
             <div class="listControls">
               <label class="field field--inline">
-                <span class="field__label">☹︎ ≥</span>
+                <span class="field__label" data-i18n="list.filter.neg">☹︎ ≥</span>
                 <input id="minCount" class="field__input field__input--small" type="number" min="0" step="1" value="0" />
               </label>
               <label class="field field--inline">
-                <span class="field__label">🙂 ≥</span>
+                <span class="field__label" data-i18n="list.filter.pos">🙂 ≥</span>
                 <input id="minPositive" class="field__input field__input--small" type="number" min="0" step="1" value="0" />
               </label>
-              <button id="clearFilterBtn" class="btn btn--secondary" type="button">Limpiar filtro</button>
+              <button id="clearFilterBtn" class="btn btn--secondary" type="button" data-i18n="list.filter.clear">Limpiar filtro</button>
               <div class="status" id="status"></div>
             </div>
           </div>
-          <p class="panel__subtitle">Click en el nombre: +1 ☹︎. Botones "+☹︎" y "+🙂" para sumar sin pinchar el nombre.</p>
+          <p class="panel__subtitle" data-i18n="list.subtitle">Click en el nombre: +1 ☹︎. Botones "+☹︎" y "+🙂" para sumar sin pinchar el nombre.</p>
         </div>
 
         <div id="emptyState" class="empty" hidden>
-          Aún no hay alumnos en esta clase. Importa una lista arriba.
+          <span data-i18n="empty.noStudents">Aún no hay alumnos en esta clase. Importa una lista arriba.</span>
         </div>
 
-        <ul id="studentList" class="list" aria-label="Lista de alumnos"></ul>
+        <ul id="studentList" class="list" aria-label="Lista de alumnos" data-i18n-attr="aria-label:list.aria"></ul>
       </section>
 
         </div>
 
-        <div class="split__resizer" data-resizer="lm" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ajustar ancho entre Alumnos y Semáforo"></div>
+        <div class="split__resizer" data-resizer="lm" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ajustar ancho entre Alumnos y Semáforo" data-i18n-attr="aria-label:resizer.lm"></div>
 
         <aside class="split__mid">
           <section id="soundPanel" class="panel soundPanel" aria-labelledby="soundTitle">
             <div class="panel__header">
               <div class="panel__headerRow">
-                <h2 id="soundTitle" class="panel__title">Semáforo de sonido</h2>
+                <h2 id="soundTitle" class="panel__title" data-i18n="sound.title">Semáforo de sonido</h2>
                 <div class="soundHeaderBtns">
-                  <button id="soundToggleConfigBtn" class="btn btn--secondary" type="button">Ocultar configuración</button>
-                  <button id="soundEnableBtn" class="btn btn--secondary" type="button">Activar</button>
+                  <button id="soundToggleConfigBtn" class="btn btn--secondary" type="button" data-i18n="sound.toggle.hide">Ocultar configuración</button>
+                  <button id="soundEnableBtn" class="btn btn--secondary" type="button" data-i18n="sound.button.enable">Activar</button>
                 </div>
               </div>
-              <p id="soundStatusText" class="panel__subtitle" aria-live="polite">Pulsa “Activar” y permite el micrófono.</p>
+              <p id="soundStatusText" class="panel__subtitle" aria-live="polite" data-i18n="sound.status.initial">Pulsa “Activar” y permite el micrófono.</p>
             </div>
 
             <div class="soundBody">
-              <div class="trafficLight" role="img" aria-label="Semáforo de sonido">
+              <div class="trafficLight" role="img" aria-label="Semáforo de sonido" data-i18n-attr="aria-label:sound.aria.traffic">
                 <div class="light light--red" data-light="red"></div>
                 <div class="light light--amber" data-light="amber"></div>
                 <div class="light light--green" data-light="green"></div>
               </div>
 
-              <div class="soundReadout" aria-label="Lectura del nivel de sonido">
-                <div class="soundValue"><span id="soundDb">—</span> <span class="soundUnit">nivel</span></div>
+              <div class="soundReadout" aria-label="Lectura del nivel de sonido" data-i18n-attr="aria-label:sound.aria.readout">
+                <div class="soundValue"><span id="soundDb">—</span> <span class="soundUnit" data-i18n="sound.unit.level">nivel</span></div>
                 <div class="soundHint">
-                  Verde &lt; <span id="soundGreenTh">—</span> · Rojo ≥ <span id="soundRedTh">—</span>
+                  <span data-i18n="sound.hint.green">Verde &lt;</span> <span id="soundGreenTh">—</span> <span data-i18n="sound.hint.red">· Rojo ≥</span> <span id="soundRedTh">—</span>
                 </div>
               </div>
             </div>
 
-            <div class="soundCalibrate" aria-label="Calibración rápida">
-              <button id="soundCalibrateSilenceBtn" class="btn btn--secondary" type="button">Calibrar silencio (verde)</button>
-              <button id="soundCalibrateTalkBtn" class="btn btn" type="button">Calibrar aula (hablando normal)</button>
+            <div class="soundCalibrate" aria-label="Calibración rápida" data-i18n-attr="aria-label:sound.calibration.aria">
+              <button id="soundCalibrateSilenceBtn" class="btn btn--secondary" type="button" data-i18n="sound.calibrate.silence">Calibrar silencio (verde)</button>
+              <button id="soundCalibrateTalkBtn" class="btn btn" type="button" data-i18n="sound.calibrate.talk">Calibrar aula (hablando normal)</button>
             </div>
 
-            <div class="soundGain" aria-label="Sensibilidad del micrófono">
+            <div class="soundGain" aria-label="Sensibilidad del micrófono" data-i18n-attr="aria-label:sound.gain.aria">
               <label class="field field--grow">
-                <span class="field__label">Sensibilidad (ganancia)</span>
+                <span class="field__label" data-i18n="sound.gain.label">Sensibilidad (ganancia)</span>
                 <input id="soundGainSlider" class="field__input" type="range" min="0.25" max="4" step="0.05" value="1" />
                 <span class="sliderValue" aria-live="polite">x<span id="soundGainValue">1.00</span></span>
               </label>
             </div>
 
-            <div class="soundSliders" aria-label="Ajuste manual del rango">
+            <div class="soundSliders" aria-label="Ajuste manual del rango" data-i18n-attr="aria-label:sound.range.aria">
               <label class="field">
-                <span class="field__label">Verde hasta (nivel 0–100)</span>
+                <span class="field__label" data-i18n="sound.range.green">Verde hasta (nivel 0–100)</span>
                 <input id="soundGreenSlider" class="field__input" type="range" min="0" max="100" step="1" value="80" />
                 <span class="sliderValue" aria-live="polite"><span id="soundGreenSliderValue">80</span></span>
               </label>
 
               <label class="field">
-                <span class="field__label">Rojo desde (nivel 0–100)</span>
+                <span class="field__label" data-i18n="sound.range.red">Rojo desde (nivel 0–100)</span>
                 <input id="soundRedSlider" class="field__input" type="range" min="0" max="100" step="1" value="90" />
                 <span class="sliderValue" aria-live="polite"><span id="soundRedSliderValue">90</span></span>
               </label>
             </div>
 
-            <div class="soundThresholds" aria-label="Umbrales exactos">
+            <div class="soundThresholds" aria-label="Umbrales exactos" data-i18n-attr="aria-label:sound.thresholds.aria">
               <label class="field">
-                <span class="field__label">Verde hasta (nivel) — exacto</span>
+                <span class="field__label" data-i18n="sound.thresholds.green">Verde hasta (nivel) — exacto</span>
                 <div class="thresholdRow">
                   <input id="soundGreenNumber" class="field__input" type="number" min="0" max="100" step="1" value="80" />
-                  <button id="soundCaptureGreenBtn" class="btn btn--secondary" type="button">Capturar</button>
+                  <button id="soundCaptureGreenBtn" class="btn btn--secondary" type="button" data-i18n="sound.capture">Capturar</button>
                 </div>
               </label>
 
               <label class="field">
-                <span class="field__label">Rojo desde (nivel) — exacto</span>
+                <span class="field__label" data-i18n="sound.thresholds.red">Rojo desde (nivel) — exacto</span>
                 <div class="thresholdRow">
                   <input id="soundRedNumber" class="field__input" type="number" min="0" max="100" step="1" value="90" />
-                  <button id="soundCaptureRedBtn" class="btn btn--secondary" type="button">Capturar</button>
+                  <button id="soundCaptureRedBtn" class="btn btn--secondary" type="button" data-i18n="sound.capture">Capturar</button>
                 </div>
               </label>
             </div>
 
-            <div class="soundColors" aria-label="Colores del semáforo">
+            <div class="soundColors" aria-label="Colores del semáforo" data-i18n-attr="aria-label:sound.colors.aria">
               <label class="field">
-                <span class="field__label">Color verde</span>
+                <span class="field__label" data-i18n="sound.color.green">Color verde</span>
                 <input id="soundGreenColor" class="field__input" type="color" value="#00d26a" />
               </label>
 
               <label class="field">
-                <span class="field__label">Color ámbar</span>
+                <span class="field__label" data-i18n="sound.color.amber">Color ámbar</span>
                 <input id="soundAmberColor" class="field__input" type="color" value="#ffb000" />
               </label>
 
               <label class="field">
-                <span class="field__label">Color rojo</span>
+                <span class="field__label" data-i18n="sound.color.red">Color rojo</span>
                 <input id="soundRedColor" class="field__input" type="color" value="#ff3b3b" />
               </label>
 
-              <button id="soundResetColorsBtn" class="btn btn--secondary" type="button">Restablecer colores</button>
+              <button id="soundResetColorsBtn" class="btn btn--secondary" type="button" data-i18n="sound.colors.reset">Restablecer colores</button>
             </div>
           </section>
         </aside>
 
-        <div class="split__resizer" data-resizer="mr" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ajustar ancho entre Semáforo y Modo"></div>
+        <div class="split__resizer" data-resizer="mr" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ajustar ancho entre Semáforo y Modo" data-i18n-attr="aria-label:resizer.mr"></div>
 
         <aside class="split__right">
           <section id="modePanel" class="panel modePanel" aria-labelledby="modeTitle">
             <div class="panel__header">
               <div class="panel__headerRow">
-                <h2 id="modeTitle" class="panel__title">Modo de trabajo</h2>
+                <h2 id="modeTitle" class="panel__title" data-i18n="mode.title">Modo de trabajo</h2>
               </div>
-              <p class="panel__subtitle">Marca el objetivo del aula para este momento.</p>
+              <p class="panel__subtitle" data-i18n="mode.subtitle">Marca el objetivo del aula para este momento.</p>
             </div>
 
-            <div class="modeBody" aria-label="Indicador del modo de trabajo">
-              <div id="modeBadge" class="modeBadge" role="img" aria-label="Indicador del modo">
+            <div class="modeBody" aria-label="Indicador del modo de trabajo" data-i18n-attr="aria-label:mode.aria.body">
+              <div id="modeBadge" class="modeBadge" role="img" aria-label="Indicador del modo" data-i18n-attr="aria-label:mode.aria.badge">
                 <div id="modeEmoji" class="modeEmoji">🤫</div>
                 <div class="modeText">
-                  <div id="modeLabel" class="modeLabel">Explicación</div>
-                  <div id="modeHint" class="modeHint">Objetivo: semáforo en VERDE (silencio).</div>
+                  <div id="modeLabel" class="modeLabel" data-i18n="mode.label.explain">Explicación</div>
+                  <div id="modeHint" class="modeHint" data-i18n="mode.hint.explain">Objetivo: semáforo en VERDE (silencio).</div>
                 </div>
               </div>
             </div>
 
-            <div class="modeControls" aria-label="Seleccionar modo">
-              <button id="modeExplainBtn" class="btn" type="button">Explicación (verde)</button>
-              <button id="modeWorkBtn" class="btn btn--secondary" type="button">Trabajo (ámbar)</button>
-              <button id="modeDebateBtn" class="btn btn--secondary" type="button">Debate (rojo)</button>
+            <div class="modeControls" aria-label="Seleccionar modo" data-i18n-attr="aria-label:mode.aria.controls">
+              <button id="modeExplainBtn" class="btn" type="button" data-i18n="mode.button.explain">Explicación (verde)</button>
+              <button id="modeWorkBtn" class="btn btn--secondary" type="button" data-i18n="mode.button.work">Trabajo (ámbar)</button>
+              <button id="modeDebateBtn" class="btn btn--secondary" type="button" data-i18n="mode.button.debate">Debate (rojo)</button>
             </div>
           </section>
         </aside>
@@ -320,16 +332,21 @@ María García"></textarea>
 
     <footer class="footer">
       <div class="container footer__row">
-        <span class="muted">Datos guardados en tu navegador (localStorage).</span>
+        <span class="muted" data-i18n="footer.data">Datos guardados en tu navegador (localStorage).</span>
       </div>
     </footer>
 
     <script>
       (function () {
         const v = window.__EDUNOTAS_V || Date.now().toString();
-        const s = document.createElement("script");
-        s.src = `app.js?v=${v}`;
-        document.body.appendChild(s);
+        const i = document.createElement("script");
+        i.src = `js/i18n.js?v=${v}`;
+        i.onload = () => {
+          const s = document.createElement("script");
+          s.src = `js/app.js?v=${v}`;
+          document.body.appendChild(s);
+        };
+        document.body.appendChild(i);
       })();
     </script>
   </body>
