@@ -855,7 +855,8 @@ function renderStudents() {
     const historyBtn = document.createElement("button");
     historyBtn.type = "button";
     historyBtn.className = "miniBtn";
-    historyBtn.textContent = "Histórico";
+    historyBtn.textContent = "🕘";
+    historyBtn.title = "Histórico";
     historyBtn.setAttribute("aria-label", `Ver histórico de ${student.name}`);
     historyBtn.addEventListener("click", () => {
       openHistoryModal(student);
@@ -864,7 +865,8 @@ function renderStudents() {
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "miniBtn";
-    editBtn.textContent = "Editar";
+    editBtn.textContent = "✏️";
+    editBtn.title = "Editar";
     editBtn.setAttribute("aria-label", `Editar nombre: ${student.name}`);
 
     editBtn.addEventListener("click", () => {
@@ -895,7 +897,8 @@ function renderStudents() {
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "miniBtn miniBtn--danger";
-    deleteBtn.textContent = "Eliminar";
+    deleteBtn.textContent = "🗑️";
+    deleteBtn.title = "Eliminar";
     deleteBtn.setAttribute("aria-label", `Eliminar alumno: ${student.name}`);
 
     deleteBtn.addEventListener("click", () => {
@@ -909,7 +912,7 @@ function renderStudents() {
 
     right.appendChild(counts);
     right.appendChild(posBtn);
-  right.appendChild(historyBtn);
+    right.appendChild(historyBtn);
     right.appendChild(editBtn);
     right.appendChild(deleteBtn);
 
@@ -1347,6 +1350,967 @@ syncTimerControls();
 negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
 posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
 renderStudents();
+
+// ------------------------------
+// Semáforo de sonido (micrófono)
+// ------------------------------
+
+const SOUND_KEY = "edunotas_sound_v1";
+
+const SOUND_PRESETS = {
+  // Nota: valores en dBFS (negativos). Más cerca de 0 => más fuerte.
+  // Calibrado para que en silencio quede en VERDE y en aula sea fácil ver ÁMBAR/ROJO.
+  strict: { greenMaxDb: -25, redMinDb: -15 },
+  normal: { greenMaxDb: -20, redMinDb: -10 },
+  permissive: { greenMaxDb: -16, redMinDb: -7 },
+};
+
+/** @typedef {{ preset?: "strict"|"normal"|"permissive", greenMaxDb?: number, redMinDb?: number }} SoundUiState */
+
+const SOUND_COLOR_DEFAULTS = {
+  green: "#00d26a",
+  amber: "#ffb000",
+  red: "#ff3b3b",
+};
+
+/** @typedef {{ preset?: "strict"|"normal"|"permissive"|"custom", greenMaxDb?: number, redMinDb?: number, greenColor?: string, amberColor?: string, redColor?: string, hideConfig?: boolean, hideDb?: boolean, silenceDb?: number, talkDb?: number, gain?: number }} SoundUiState */
+
+/** @returns {SoundUiState} */
+function loadSoundUiState() {
+  const raw = localStorage.getItem(SOUND_KEY);
+  if (!raw) {
+    return {
+      preset: "normal",
+      greenMaxDb: SOUND_PRESETS.normal.greenMaxDb,
+      redMinDb: SOUND_PRESETS.normal.redMinDb,
+      greenColor: SOUND_COLOR_DEFAULTS.green,
+      amberColor: SOUND_COLOR_DEFAULTS.amber,
+      redColor: SOUND_COLOR_DEFAULTS.red,
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {
+        preset: "normal",
+        greenMaxDb: SOUND_PRESETS.normal.greenMaxDb,
+        redMinDb: SOUND_PRESETS.normal.redMinDb,
+        greenColor: SOUND_COLOR_DEFAULTS.green,
+        amberColor: SOUND_COLOR_DEFAULTS.amber,
+        redColor: SOUND_COLOR_DEFAULTS.red,
+      };
+    }
+
+    const preset = parsed.preset;
+    const okPreset =
+      preset === "strict" || preset === "normal" || preset === "permissive" || preset === "custom" ? preset : "normal";
+
+    const g = Number(parsed.greenMaxDb);
+    const r = Number(parsed.redMinDb);
+    const greenMaxDb = Number.isFinite(g) ? g : SOUND_PRESETS[okPreset].greenMaxDb;
+    const redMinDb = Number.isFinite(r) ? r : SOUND_PRESETS[okPreset].redMinDb;
+
+    const greenColor = typeof parsed.greenColor === "string" ? parsed.greenColor : SOUND_COLOR_DEFAULTS.green;
+    const amberColor = typeof parsed.amberColor === "string" ? parsed.amberColor : SOUND_COLOR_DEFAULTS.amber;
+    const redColor = typeof parsed.redColor === "string" ? parsed.redColor : SOUND_COLOR_DEFAULTS.red;
+    // Compatibilidad: antes existía hideDb (ocultar dB). Ahora usamos hideConfig.
+    const hideConfig =
+      typeof parsed.hideConfig === "boolean"
+        ? parsed.hideConfig
+        : typeof parsed.hideDb === "boolean"
+          ? parsed.hideDb
+          : false;
+    const silenceDb = Number.isFinite(Number(parsed.silenceDb)) ? Number(parsed.silenceDb) : undefined;
+    const talkDb = Number.isFinite(Number(parsed.talkDb)) ? Number(parsed.talkDb) : undefined;
+    const gain = Number.isFinite(Number(parsed.gain)) ? Number(parsed.gain) : 1;
+
+    return { preset: okPreset, greenMaxDb, redMinDb, greenColor, amberColor, redColor, hideConfig, silenceDb, talkDb, gain };
+  } catch {
+    return {
+      preset: "normal",
+      greenMaxDb: SOUND_PRESETS.normal.greenMaxDb,
+      redMinDb: SOUND_PRESETS.normal.redMinDb,
+      greenColor: SOUND_COLOR_DEFAULTS.green,
+      amberColor: SOUND_COLOR_DEFAULTS.amber,
+      redColor: SOUND_COLOR_DEFAULTS.red,
+    };
+  }
+}
+
+/** @param {SoundUiState} s */
+function saveSoundUiState(s) {
+  localStorage.setItem(SOUND_KEY, JSON.stringify(s));
+}
+
+function initSoundSemaphore() {
+  const soundPanel = document.getElementById("soundPanel");
+  if (!soundPanel) return;
+
+  const enableBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("soundEnableBtn"));
+  const toggleConfigBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("soundToggleConfigBtn"));
+  const statusText = /** @type {HTMLParagraphElement|null} */ (document.getElementById("soundStatusText"));
+  const soundDb = /** @type {HTMLSpanElement|null} */ (document.getElementById("soundDb"));
+  const greenTh = /** @type {HTMLSpanElement|null} */ (document.getElementById("soundGreenTh"));
+  const redTh = /** @type {HTMLSpanElement|null} */ (document.getElementById("soundRedTh"));
+
+  const greenSlider = /** @type {HTMLInputElement|null} */ (document.getElementById("soundGreenSlider"));
+  const redSlider = /** @type {HTMLInputElement|null} */ (document.getElementById("soundRedSlider"));
+  const greenSliderValue = /** @type {HTMLSpanElement|null} */ (document.getElementById("soundGreenSliderValue"));
+  const redSliderValue = /** @type {HTMLSpanElement|null} */ (document.getElementById("soundRedSliderValue"));
+
+  const greenColorInput = /** @type {HTMLInputElement|null} */ (document.getElementById("soundGreenColor"));
+  const amberColorInput = /** @type {HTMLInputElement|null} */ (document.getElementById("soundAmberColor"));
+  const redColorInput = /** @type {HTMLInputElement|null} */ (document.getElementById("soundRedColor"));
+  const resetColorsBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("soundResetColorsBtn"));
+
+  const greenNumber = /** @type {HTMLInputElement|null} */ (document.getElementById("soundGreenNumber"));
+  const redNumber = /** @type {HTMLInputElement|null} */ (document.getElementById("soundRedNumber"));
+  const captureGreenBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("soundCaptureGreenBtn"));
+  const captureRedBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("soundCaptureRedBtn"));
+
+  const calibrateSilenceBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("soundCalibrateSilenceBtn"));
+  const calibrateTalkBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("soundCalibrateTalkBtn"));
+
+  const gainSlider = /** @type {HTMLInputElement|null} */ (document.getElementById("soundGainSlider"));
+  const gainValue = /** @type {HTMLSpanElement|null} */ (document.getElementById("soundGainValue"));
+
+  if (
+    !enableBtn ||
+    !toggleConfigBtn ||
+    !statusText ||
+    !soundDb ||
+    !greenTh ||
+    !redTh ||
+    !greenSlider ||
+    !redSlider ||
+    !greenSliderValue ||
+    !redSliderValue ||
+    !greenColorInput ||
+    !amberColorInput ||
+    !redColorInput ||
+    !resetColorsBtn ||
+    !greenNumber ||
+    !redNumber ||
+    !captureGreenBtn ||
+    !captureRedBtn ||
+    !calibrateSilenceBtn ||
+    !calibrateTalkBtn ||
+    !gainSlider ||
+    !gainValue
+  ) {
+    return;
+  }
+
+  /** @type {SoundUiState} */
+  let ui = loadSoundUiState();
+
+  /** @type {"green"|"amber"|"red"|"off"} */
+  let currentState = "off";
+
+  /** @type {AudioContext|null} */
+  let audioCtx = null;
+  /** @type {MediaStream|null} */
+  let stream = null;
+  /** @type {GainNode|null} */
+  let gainNode = null;
+  /** @type {AnalyserNode|null} */
+  let analyser = null;
+  /** @type {Float32Array|null} */
+  let floatBuf = null;
+  /** @type {Uint8Array|null} */
+  let byteBuf = null;
+  let rafId = 0;
+
+  // Suavizado simple para evitar parpadeo.
+  let smoothedDb = -100;
+  let lastDisplayedDb = -100;
+
+  // Escala visual del "nivel" (0..100). Aumentarla amplía los puntos entre dos dB.
+  // Ej: si entre silencio y habla hay ~10 dB, con x2 se verán ~20 puntos.
+  const LEVEL_SCALE = 1.4;
+
+  function dbToLevel(db) {
+    const n = Number(db);
+    if (!Number.isFinite(n)) return 0;
+    // db en [-100..0] -> nivel base en [0..100] y luego escalado
+    const base = 100 + n;
+    return Math.max(0, Math.min(100, Math.round(base * LEVEL_SCALE)));
+  }
+
+  function levelToDb(level) {
+    const n = Number(level);
+    if (!Number.isFinite(n)) return -100;
+    const clamped = Math.max(0, Math.min(100, Math.round(n)));
+    return clamped / LEVEL_SCALE - 100;
+  }
+
+  function getThresholds() {
+    const g = Number(ui.greenMaxDb);
+    const r = Number(ui.redMinDb);
+
+    const fallback = SOUND_PRESETS[ui.preset || "normal"];
+    const greenMaxDb = Number.isFinite(g) ? g : fallback.greenMaxDb;
+    const redMinDb = Number.isFinite(r) ? r : fallback.redMinDb;
+
+    // Asegura una zona ámbar mínima.
+    const minGap = 3;
+    if (redMinDb <= greenMaxDb + minGap) {
+      return { greenMaxDb, redMinDb: greenMaxDb + minGap };
+    }
+
+    return { greenMaxDb, redMinDb };
+  }
+
+  function setPanelState(next) {
+    currentState = next;
+    if (next === "off") {
+      soundPanel.removeAttribute("data-sound-state");
+    } else {
+      soundPanel.setAttribute("data-sound-state", next);
+    }
+  }
+
+  function applyColorsToPanel() {
+    const green = typeof ui.greenColor === "string" ? ui.greenColor : SOUND_COLOR_DEFAULTS.green;
+    const amber = typeof ui.amberColor === "string" ? ui.amberColor : SOUND_COLOR_DEFAULTS.amber;
+    const red = typeof ui.redColor === "string" ? ui.redColor : SOUND_COLOR_DEFAULTS.red;
+
+    soundPanel.style.setProperty("--sound-green", green);
+    soundPanel.style.setProperty("--sound-amber", amber);
+    soundPanel.style.setProperty("--sound-red", red);
+
+    // También las ponemos a nivel global para que otros paneles (modo de trabajo) las reutilicen.
+    document.documentElement.style.setProperty("--sound-green", green);
+    document.documentElement.style.setProperty("--sound-amber", amber);
+    document.documentElement.style.setProperty("--sound-red", red);
+
+    greenColorInput.value = green;
+    amberColorInput.value = amber;
+    redColorInput.value = red;
+  }
+
+  function applyHideConfigToPanel() {
+    const hide = Boolean(ui.hideConfig);
+    soundPanel.setAttribute("data-hide-config", hide ? "1" : "0");
+    toggleConfigBtn.textContent = hide ? "Mostrar configuración" : "Ocultar configuración";
+  }
+
+  function clampGain(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(0.25, Math.min(4, n));
+  }
+
+  function applyGainUi() {
+    const g = clampGain(ui.gain ?? 1);
+    ui.gain = g;
+    gainSlider.value = String(g);
+    gainValue.textContent = g.toFixed(2);
+    if (gainNode) gainNode.gain.value = g;
+  }
+
+  function updatePresetButtons() {
+    const { greenMaxDb, redMinDb } = getThresholds();
+    greenTh.textContent = `${dbToLevel(greenMaxDb)}`;
+    redTh.textContent = `${dbToLevel(redMinDb)}`;
+
+    greenSlider.value = String(dbToLevel(greenMaxDb));
+    redSlider.value = String(dbToLevel(redMinDb));
+    greenSliderValue.textContent = String(dbToLevel(greenMaxDb));
+    redSliderValue.textContent = String(dbToLevel(redMinDb));
+
+    greenNumber.value = String(dbToLevel(greenMaxDb));
+    redNumber.value = String(dbToLevel(redMinDb));
+
+    applyColorsToPanel();
+    applyHideConfigToPanel();
+    applyGainUi();
+  }
+
+  function clampLevel(v) {
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, n));
+  }
+
+  /**
+   * Aplica umbrales en nivel (0..100).
+   * Mantiene una zona ámbar mínima moviendo el otro umbral según el origen.
+   * @param {number|string} nextGreen
+   * @param {number|string} nextRed
+   * @param {"green"|"red"|"both"} [source]
+   */
+  function setManualThresholds(nextGreen, nextRed, source = "both") {
+    const minGap = 3;
+    let gLevel = clampLevel(nextGreen);
+    let rLevel = clampLevel(nextRed);
+
+    if (source === "green") {
+      if (rLevel < gLevel + minGap) rLevel = Math.min(100, gLevel + minGap);
+      if (rLevel < gLevel + minGap) gLevel = Math.max(0, rLevel - minGap);
+    } else if (source === "red") {
+      if (rLevel < gLevel + minGap) gLevel = Math.max(0, rLevel - minGap);
+      if (rLevel < gLevel + minGap) rLevel = Math.min(100, gLevel + minGap);
+    } else {
+      if (rLevel < gLevel + minGap) rLevel = Math.min(100, gLevel + minGap);
+      if (rLevel < gLevel + minGap) gLevel = Math.max(0, rLevel - minGap);
+    }
+
+    ui.greenMaxDb = levelToDb(gLevel);
+    ui.redMinDb = levelToDb(rLevel);
+    saveSoundUiState(ui);
+    updatePresetButtons();
+  }
+
+  function ensureMicOrExplain() {
+    if (!analyser) {
+      statusText.textContent = "Activa el micrófono primero (botón Activar).";
+      return false;
+    }
+    return true;
+  }
+
+  function calibrateSilence() {
+    if (!ensureMicOrExplain()) return;
+    ui.preset = "custom";
+    ui.silenceDb = Math.round(lastDisplayedDb);
+    ui.talkDb = undefined;
+    saveSoundUiState(ui);
+    statusText.textContent = `Silencio calibrado: nivel ${dbToLevel(lastDisplayedDb)}. Ahora pulsa “Calibrar aula (hablando normal)”.`;
+    updatePresetButtons();
+  }
+
+  function calibrateTalk() {
+    if (!ensureMicOrExplain()) return;
+    const silence = Number(ui.silenceDb);
+    if (!Number.isFinite(silence)) {
+      statusText.textContent = "Primero pulsa “Calibrar silencio (verde)”.";
+      return;
+    }
+
+    const talk = Math.round(lastDisplayedDb);
+    ui.preset = "custom";
+    ui.talkDb = talk;
+
+    const silenceLevel = dbToLevel(silence);
+    const talkLevel = dbToLevel(talk);
+
+    // Umbrales derivados en escala nivel (0..100):
+    // - Verde hasta: punto medio entre silencio y habla.
+    // - Rojo desde: habla + margen (para que gritos disparen rojo).
+    const greenMaxLevel = Math.round((silenceLevel + talkLevel) / 2);
+    const redMinLevel = Math.round(talkLevel + 6);
+
+    setManualThresholds(greenMaxLevel, redMinLevel);
+    statusText.textContent = `Calibrado. Verde < ${greenMaxLevel} · Rojo ≥ ${Math.round(Math.max(redMinLevel, greenMaxLevel + 3))} (nivel).`;
+  }
+
+  function setSoundColors(nextGreen, nextAmber, nextRed) {
+    ui.greenColor = String(nextGreen || SOUND_COLOR_DEFAULTS.green);
+    ui.amberColor = String(nextAmber || SOUND_COLOR_DEFAULTS.amber);
+    ui.redColor = String(nextRed || SOUND_COLOR_DEFAULTS.red);
+    saveSoundUiState(ui);
+    applyColorsToPanel();
+  }
+
+  async function enableMic() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      statusText.textContent = "Este navegador no soporta acceso al micrófono.";
+      return;
+    }
+
+    // Si ya está activo, no re-abrimos.
+    if (analyser || stream || audioCtx) return;
+
+    try {
+      enableBtn.disabled = true;
+      enableBtn.textContent = "Activando…";
+
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = clampGain(ui.gain ?? 1);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.0;
+
+      source.connect(gainNode);
+      gainNode.connect(analyser);
+
+      // Buffers
+      try {
+        floatBuf = new Float32Array(analyser.fftSize);
+      } catch {
+        floatBuf = null;
+      }
+      byteBuf = new Uint8Array(analyser.fftSize);
+
+      await audioCtx.resume?.();
+
+      statusText.textContent = "Sensor activo. Ajusta el umbral según necesites.";
+      enableBtn.textContent = "Desactivar";
+      enableBtn.disabled = false;
+      setPanelState("green");
+
+      applyGainUi();
+
+      tick();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "No se pudo activar el micrófono";
+      statusText.textContent = `No se pudo activar: ${msg}`;
+      enableBtn.disabled = false;
+      enableBtn.textContent = "Activar";
+      setPanelState("off");
+    }
+  }
+
+  async function disableMic() {
+    // Parar animación
+    if (rafId) window.cancelAnimationFrame(rafId);
+    rafId = 0;
+
+    // Parar stream
+    try {
+      stream?.getTracks?.().forEach((t) => t.stop());
+    } catch {
+      // noop
+    }
+    stream = null;
+
+    // Cerrar contexto
+    try {
+      await audioCtx?.close?.();
+    } catch {
+      // noop
+    }
+    audioCtx = null;
+
+    analyser = null;
+    gainNode = null;
+    floatBuf = null;
+    byteBuf = null;
+
+    smoothedDb = -100;
+    lastDisplayedDb = -100;
+
+    setPanelState("off");
+    statusText.textContent = "Sensor desactivado.";
+    enableBtn.textContent = "Activar";
+    enableBtn.disabled = false;
+  }
+
+  function computeDbFromAnalyser() {
+    if (!analyser) return -100;
+
+    // Preferimos float por precisión.
+    if (floatBuf && typeof analyser.getFloatTimeDomainData === "function") {
+      analyser.getFloatTimeDomainData(floatBuf);
+      let sum = 0;
+      for (let i = 0; i < floatBuf.length; i++) {
+        const x = floatBuf[i];
+        sum += x * x;
+      }
+      const rms = Math.sqrt(sum / floatBuf.length);
+      if (!Number.isFinite(rms) || rms <= 0) return -100;
+      const db = 20 * Math.log10(rms);
+      return Math.max(-100, Math.min(0, db));
+    }
+
+    // Fallback: uint8 0..255, centrado 128.
+    if (byteBuf) {
+      analyser.getByteTimeDomainData(byteBuf);
+      let sum = 0;
+      for (let i = 0; i < byteBuf.length; i++) {
+        const x = (byteBuf[i] - 128) / 128;
+        sum += x * x;
+      }
+      const rms = Math.sqrt(sum / byteBuf.length);
+      if (!Number.isFinite(rms) || rms <= 0) return -100;
+      const db = 20 * Math.log10(rms);
+      return Math.max(-100, Math.min(0, db));
+    }
+
+    return -100;
+  }
+
+  function tick() {
+    rafId = window.requestAnimationFrame(tick);
+    const rawDb = computeDbFromAnalyser();
+    // EMA (más bajo = más estable)
+    const alpha = 0.18;
+    smoothedDb = smoothedDb + alpha * (rawDb - smoothedDb);
+
+    lastDisplayedDb = smoothedDb;
+
+    soundDb.textContent = `${dbToLevel(smoothedDb)}`;
+
+    const { greenMaxDb, redMinDb } = getThresholds();
+    /** @type {"green"|"amber"|"red"} */
+    const next = smoothedDb >= redMinDb ? "red" : smoothedDb >= greenMaxDb ? "amber" : "green";
+
+    if (next !== currentState) {
+      setPanelState(next);
+      if (next === "green") statusText.textContent = "VERDE: el ruido está en el umbral correcto.";
+      if (next === "amber") statusText.textContent = "ÁMBAR: el ruido es aceptable, pero cerca del límite.";
+      if (next === "red") statusText.textContent = "ROJO: nos hemos pasado con el ruido.";
+    }
+  }
+
+  // Listeners
+  enableBtn.addEventListener("click", () => {
+    if (analyser || stream || audioCtx) {
+      void disableMic();
+    } else {
+      void enableMic();
+    }
+  });
+
+  toggleConfigBtn.addEventListener("click", () => {
+    ui.hideConfig = !ui.hideConfig;
+    saveSoundUiState(ui);
+    applyHideConfigToPanel();
+  });
+
+  greenSlider.addEventListener("input", () => {
+    // Mantiene el preset como referencia visual, pero permite ajuste manual.
+    ui.preset = ui.preset || "normal";
+    setManualThresholds(greenSlider.value, redSlider.value, "green");
+  });
+
+  redSlider.addEventListener("input", () => {
+    ui.preset = ui.preset || "normal";
+    setManualThresholds(greenSlider.value, redSlider.value, "red");
+  });
+
+  greenNumber.addEventListener("input", () => {
+    ui.preset = ui.preset || "normal";
+    setManualThresholds(greenNumber.value, redNumber.value, "green");
+  });
+
+  redNumber.addEventListener("input", () => {
+    ui.preset = ui.preset || "normal";
+    setManualThresholds(greenNumber.value, redNumber.value, "red");
+  });
+
+  captureGreenBtn.addEventListener("click", () => {
+    // Captura el nivel actual como límite de VERDE.
+    ui.preset = ui.preset || "normal";
+    setManualThresholds(dbToLevel(lastDisplayedDb), redNumber.value);
+  });
+
+  captureRedBtn.addEventListener("click", () => {
+    // Captura el nivel actual como inicio de ROJO.
+    ui.preset = ui.preset || "normal";
+    setManualThresholds(greenNumber.value, dbToLevel(lastDisplayedDb));
+  });
+
+  greenColorInput.addEventListener("input", () => {
+    setSoundColors(greenColorInput.value, amberColorInput.value, redColorInput.value);
+  });
+
+  amberColorInput.addEventListener("input", () => {
+    setSoundColors(greenColorInput.value, amberColorInput.value, redColorInput.value);
+  });
+
+  redColorInput.addEventListener("input", () => {
+    setSoundColors(greenColorInput.value, amberColorInput.value, redColorInput.value);
+  });
+
+  resetColorsBtn.addEventListener("click", () => {
+    setSoundColors(SOUND_COLOR_DEFAULTS.green, SOUND_COLOR_DEFAULTS.amber, SOUND_COLOR_DEFAULTS.red);
+  });
+
+  calibrateSilenceBtn.addEventListener("click", () => {
+    calibrateSilence();
+  });
+
+  calibrateTalkBtn.addEventListener("click", () => {
+    calibrateTalk();
+  });
+
+  gainSlider.addEventListener("input", () => {
+    ui.gain = clampGain(gainSlider.value);
+    saveSoundUiState(ui);
+    applyGainUi();
+  });
+
+  // Estado inicial UI
+  setPanelState("off");
+  updatePresetButtons();
+  statusText.textContent = "Pulsa “Activar” y permite el micrófono.";
+
+  // Limpieza si la pestaña se oculta (evita consumo innecesario).
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      rafId = 0;
+    } else {
+      if (analyser && !rafId) tick();
+    }
+  });
+}
+
+// ------------------------------
+// Modo de trabajo (columna derecha)
+// ------------------------------
+
+const MODE_KEY = "edunotas_mode_v1";
+
+function initWorkModePanel() {
+  const panel = document.getElementById("modePanel");
+  if (!panel) return;
+
+  const emoji = /** @type {HTMLDivElement|null} */ (document.getElementById("modeEmoji"));
+  const label = /** @type {HTMLDivElement|null} */ (document.getElementById("modeLabel"));
+  const hint = /** @type {HTMLDivElement|null} */ (document.getElementById("modeHint"));
+
+  const explainBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("modeExplainBtn"));
+  const workBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("modeWorkBtn"));
+  const debateBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("modeDebateBtn"));
+
+  if (!emoji || !label || !hint || !explainBtn || !workBtn || !debateBtn) return;
+
+  /** @type {"green"|"amber"|"red"} */
+  let mode = "green";
+
+  function loadMode() {
+    const raw = localStorage.getItem(MODE_KEY);
+    if (!raw) return "green";
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed === "green" || parsed === "amber" || parsed === "red" ? parsed : "green";
+    } catch {
+      return "green";
+    }
+  }
+
+  function saveMode(next) {
+    localStorage.setItem(MODE_KEY, JSON.stringify(next));
+  }
+
+  function applyMode(next) {
+    mode = next;
+    panel.setAttribute("data-mode", next);
+
+    explainBtn.disabled = next === "green";
+    workBtn.disabled = next === "amber";
+    debateBtn.disabled = next === "red";
+
+    if (next === "green") {
+      emoji.textContent = "🤫";
+      label.textContent = "Explicación";
+      hint.textContent = "Objetivo: semáforo en VERDE (silencio).";
+    } else if (next === "amber") {
+      emoji.textContent = "🤝";
+      label.textContent = "Trabajo";
+      hint.textContent = "Objetivo: semáforo en ÁMBAR (voz baja).";
+    } else {
+      emoji.textContent = "🗣️";
+      label.textContent = "Debate";
+      hint.textContent = "Objetivo: semáforo en ROJO solo puntualmente (moderación).";
+    }
+  }
+
+  explainBtn.addEventListener("click", () => {
+    applyMode("green");
+    saveMode("green");
+  });
+  workBtn.addEventListener("click", () => {
+    applyMode("amber");
+    saveMode("amber");
+  });
+  debateBtn.addEventListener("click", () => {
+    applyMode("red");
+    saveMode("red");
+  });
+
+  applyMode(loadMode());
+}
+
+// ------------------------------
+// Visibilidad de columnas (3 columnas)
+// ------------------------------
+
+const COLVIS_KEY = "edunotas_columns_v1";
+const COLW_KEY = "edunotas_colwidth_v1";
+
+function initColumnVisibility() {
+  const split = document.getElementById("splitLayout");
+  if (!split) return;
+
+  const leftBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("toggleLeftColBtn"));
+  const midBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("toggleMidColBtn"));
+  const rightBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("toggleRightColBtn"));
+  if (!leftBtn || !midBtn || !rightBtn) return;
+
+  /** @type {{ left: boolean, mid: boolean, right: boolean }} */
+  let vis = { left: true, mid: true, right: true };
+
+  function load() {
+    const raw = localStorage.getItem(COLVIS_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return;
+      if (typeof parsed.left === "boolean") vis.left = parsed.left;
+      if (typeof parsed.mid === "boolean") vis.mid = parsed.mid;
+      if (typeof parsed.right === "boolean") vis.right = parsed.right;
+    } catch {
+      // ignore
+    }
+  }
+
+  function save() {
+    localStorage.setItem(COLVIS_KEY, JSON.stringify(vis));
+  }
+
+  function apply() {
+    split.classList.toggle("split--hide-left", !vis.left);
+    split.classList.toggle("split--hide-mid", !vis.mid);
+    split.classList.toggle("split--hide-right", !vis.right);
+
+    leftBtn.setAttribute("aria-pressed", String(vis.left));
+    midBtn.setAttribute("aria-pressed", String(vis.mid));
+    rightBtn.setAttribute("aria-pressed", String(vis.right));
+
+    // Feedback visual reutilizando estilos existentes
+    leftBtn.classList.toggle("btn--secondary", vis.left);
+    midBtn.classList.toggle("btn--secondary", vis.mid);
+    rightBtn.classList.toggle("btn--secondary", vis.right);
+  }
+
+  function ensureAtLeastOneVisible() {
+    if (vis.left || vis.mid || vis.right) return true;
+    // Evita dejar todo oculto.
+    vis.mid = true;
+    return false;
+  }
+
+  leftBtn.addEventListener("click", () => {
+    vis.left = !vis.left;
+    ensureAtLeastOneVisible();
+    apply();
+    save();
+  });
+  midBtn.addEventListener("click", () => {
+    vis.mid = !vis.mid;
+    ensureAtLeastOneVisible();
+    apply();
+    save();
+  });
+  rightBtn.addEventListener("click", () => {
+    vis.right = !vis.right;
+    ensureAtLeastOneVisible();
+    apply();
+    save();
+  });
+
+  load();
+  ensureAtLeastOneVisible();
+  apply();
+}
+
+function initColumnResizers() {
+  const split = document.getElementById("splitLayout");
+  if (!split) return;
+
+  /** @type {{ left: number, mid: number, right: number }} */
+  let weights = { left: 2, mid: 1, right: 1 };
+
+  function load() {
+    const raw = localStorage.getItem(COLW_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return;
+      const l = Number(parsed.left);
+      const m = Number(parsed.mid);
+      const r = Number(parsed.right);
+      if (Number.isFinite(l) && l > 0) weights.left = l;
+      if (Number.isFinite(m) && m > 0) weights.mid = m;
+      if (Number.isFinite(r) && r > 0) weights.right = r;
+    } catch {
+      // ignore
+    }
+  }
+
+  function save() {
+    localStorage.setItem(COLW_KEY, JSON.stringify(weights));
+  }
+
+  function apply() {
+    split.style.setProperty("--col-left", `${weights.left}fr`);
+    split.style.setProperty("--col-mid", `${weights.mid}fr`);
+    split.style.setProperty("--col-right", `${weights.right}fr`);
+  }
+
+  function isNarrow() {
+    return window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
+  }
+
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  }
+
+  /**
+   * Ajusta pesos con teclado. Delta se aplica al panel A y se resta a B.
+   * @param {"lm"|"mr"} which
+   * @param {number} delta
+   */
+  function nudge(which, delta) {
+    if (isNarrow()) return;
+    const hideLeft = split.classList.contains("split--hide-left");
+    const hideMid = split.classList.contains("split--hide-mid");
+    const hideRight = split.classList.contains("split--hide-right");
+
+    if (which === "lm" && (hideLeft || hideMid)) return;
+    if (which === "mr" && (hideMid || hideRight)) return;
+
+    const sum = which === "lm" ? weights.left + weights.mid : weights.mid + weights.right;
+    const minW = 0.5;
+    const maxA = sum - minW;
+
+    if (which === "lm") {
+      const nextLeft = clamp(weights.left + delta, minW, maxA);
+      const nextMid = Math.max(minW, sum - nextLeft);
+      weights.left = nextLeft;
+      weights.mid = nextMid;
+    } else {
+      const nextMid = clamp(weights.mid + delta, minW, maxA);
+      const nextRight = Math.max(minW, sum - nextMid);
+      weights.mid = nextMid;
+      weights.right = nextRight;
+    }
+    apply();
+    save();
+  }
+
+  /** @param {"lm"|"mr"} which */
+  function startDrag(which, ev) {
+    if (isNarrow()) return;
+
+    const leftEl = /** @type {HTMLElement|null} */ (split.querySelector(".split__left"));
+    const midEl = /** @type {HTMLElement|null} */ (split.querySelector(".split__mid"));
+    const rightEl = /** @type {HTMLElement|null} */ (split.querySelector(".split__right"));
+    if (!leftEl || !midEl || !rightEl) return;
+
+    // Respeta columnas ocultas.
+    const hideLeft = split.classList.contains("split--hide-left");
+    const hideMid = split.classList.contains("split--hide-mid");
+    const hideRight = split.classList.contains("split--hide-right");
+
+    if (which === "lm" && (hideLeft || hideMid)) return;
+    if (which === "mr" && (hideMid || hideRight)) return;
+
+    const startX = ev.clientX;
+    const start = { ...weights };
+
+    const aEl = which === "lm" ? leftEl : midEl;
+    const bEl = which === "lm" ? midEl : rightEl;
+
+    const aStartW = aEl.getBoundingClientRect().width;
+    const bStartW = bEl.getBoundingClientRect().width;
+    const totalW = aStartW + bStartW;
+
+    const aMin = which === "lm" ? 420 : 320;
+    const bMin = 320;
+
+    const sum = which === "lm" ? start.left + start.mid : start.mid + start.right;
+
+    /** @param {PointerEvent} e */
+    function onMove(e) {
+      const dx = e.clientX - startX;
+      let aW = aStartW + dx;
+      let bW = bStartW - dx;
+
+      // Clamps por mínimos.
+      if (aW < aMin) {
+        const diff = aMin - aW;
+        aW = aMin;
+        bW = Math.max(bMin, bW - diff);
+      }
+      if (bW < bMin) {
+        const diff = bMin - bW;
+        bW = bMin;
+        aW = Math.max(aMin, aW - diff);
+      }
+
+      const ratio = totalW > 0 ? aW / totalW : 0.5;
+      const aWgt = Math.max(0.25, ratio * sum);
+      const bWgt = Math.max(0.25, (1 - ratio) * sum);
+
+      if (which === "lm") {
+        weights.left = aWgt;
+        weights.mid = bWgt;
+      } else {
+        weights.mid = aWgt;
+        weights.right = bWgt;
+      }
+      apply();
+    }
+
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      save();
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  const resLm = /** @type {HTMLElement|null} */ (split.querySelector('.split__resizer[data-resizer="lm"]'));
+  const resMr = /** @type {HTMLElement|null} */ (split.querySelector('.split__resizer[data-resizer="mr"]'));
+  if (resLm) {
+    resLm.addEventListener("pointerdown", (e) => {
+      resLm.setPointerCapture?.(e.pointerId);
+      startDrag("lm", e);
+    });
+    resLm.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 0.25 : 0.1;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        nudge("lm", -step);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        nudge("lm", step);
+      }
+    });
+  }
+  if (resMr) {
+    resMr.addEventListener("pointerdown", (e) => {
+      resMr.setPointerCapture?.(e.pointerId);
+      startDrag("mr", e);
+    });
+    resMr.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 0.25 : 0.1;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        nudge("mr", -step);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        nudge("mr", step);
+      }
+    });
+  }
+
+  load();
+  apply();
+}
+
+// Inicializa el semáforo si existe el panel en la página.
+initSoundSemaphore();
+initWorkModePanel();
+initColumnVisibility();
+initColumnResizers();
 
 // Actualiza contadores de tiempo una vez por segundo
 window.setInterval(tickTimers, 1000);

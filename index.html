@@ -28,6 +28,15 @@
       <div class="container header__row">
         <h1 class="title">EduAvisos</h1>
         <div class="controls">
+          <div class="viewToggles" aria-label="Vista">
+            <span class="field__label">Vista</span>
+            <div class="viewToggles__buttons" role="group" aria-label="Mostrar u ocultar columnas">
+              <button id="toggleLeftColBtn" class="btn btn--secondary" type="button" aria-pressed="true">Alumnos</button>
+              <button id="toggleMidColBtn" class="btn btn--secondary" type="button" aria-pressed="true">Semáforo</button>
+              <button id="toggleRightColBtn" class="btn btn--secondary" type="button" aria-pressed="true">Modo</button>
+            </div>
+          </div>
+
           <label class="field">
             <span class="field__label">Clase</span>
             <select id="classSelect" class="field__input" aria-label="Seleccionar clase"></select>
@@ -43,7 +52,9 @@
       </div>
     </header>
 
-    <main class="container">
+    <main class="container container--fluid">
+      <div id="splitLayout" class="split">
+        <div class="split__left">
       <dialog id="importDialog" class="modal" aria-labelledby="importDialogTitle">
         <div class="modal__header">
           <h3 id="importDialogTitle" class="modal__title">Configuración</h3>
@@ -177,6 +188,134 @@ María García"></textarea>
 
         <ul id="studentList" class="list" aria-label="Lista de alumnos"></ul>
       </section>
+
+        </div>
+
+        <div class="split__resizer" data-resizer="lm" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ajustar ancho entre Alumnos y Semáforo"></div>
+
+        <aside class="split__mid">
+          <section id="soundPanel" class="panel soundPanel" aria-labelledby="soundTitle">
+            <div class="panel__header">
+              <div class="panel__headerRow">
+                <h2 id="soundTitle" class="panel__title">Semáforo de sonido</h2>
+                <div class="soundHeaderBtns">
+                  <button id="soundToggleConfigBtn" class="btn btn--secondary" type="button">Ocultar configuración</button>
+                  <button id="soundEnableBtn" class="btn btn--secondary" type="button">Activar</button>
+                </div>
+              </div>
+              <p id="soundStatusText" class="panel__subtitle" aria-live="polite">Pulsa “Activar” y permite el micrófono.</p>
+            </div>
+
+            <div class="soundBody">
+              <div class="trafficLight" role="img" aria-label="Semáforo de sonido">
+                <div class="light light--red" data-light="red"></div>
+                <div class="light light--amber" data-light="amber"></div>
+                <div class="light light--green" data-light="green"></div>
+              </div>
+
+              <div class="soundReadout" aria-label="Lectura del nivel de sonido">
+                <div class="soundValue"><span id="soundDb">—</span> <span class="soundUnit">nivel</span></div>
+                <div class="soundHint">
+                  Verde &lt; <span id="soundGreenTh">—</span> · Rojo ≥ <span id="soundRedTh">—</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="soundCalibrate" aria-label="Calibración rápida">
+              <button id="soundCalibrateSilenceBtn" class="btn btn--secondary" type="button">Calibrar silencio (verde)</button>
+              <button id="soundCalibrateTalkBtn" class="btn btn" type="button">Calibrar aula (hablando normal)</button>
+            </div>
+
+            <div class="soundGain" aria-label="Sensibilidad del micrófono">
+              <label class="field field--grow">
+                <span class="field__label">Sensibilidad (ganancia)</span>
+                <input id="soundGainSlider" class="field__input" type="range" min="0.25" max="4" step="0.05" value="1" />
+                <span class="sliderValue" aria-live="polite">x<span id="soundGainValue">1.00</span></span>
+              </label>
+            </div>
+
+            <div class="soundSliders" aria-label="Ajuste manual del rango">
+              <label class="field">
+                <span class="field__label">Verde hasta (nivel 0–100)</span>
+                <input id="soundGreenSlider" class="field__input" type="range" min="0" max="100" step="1" value="80" />
+                <span class="sliderValue" aria-live="polite"><span id="soundGreenSliderValue">80</span></span>
+              </label>
+
+              <label class="field">
+                <span class="field__label">Rojo desde (nivel 0–100)</span>
+                <input id="soundRedSlider" class="field__input" type="range" min="0" max="100" step="1" value="90" />
+                <span class="sliderValue" aria-live="polite"><span id="soundRedSliderValue">90</span></span>
+              </label>
+            </div>
+
+            <div class="soundThresholds" aria-label="Umbrales exactos">
+              <label class="field">
+                <span class="field__label">Verde hasta (nivel) — exacto</span>
+                <div class="thresholdRow">
+                  <input id="soundGreenNumber" class="field__input" type="number" min="0" max="100" step="1" value="80" />
+                  <button id="soundCaptureGreenBtn" class="btn btn--secondary" type="button">Capturar</button>
+                </div>
+              </label>
+
+              <label class="field">
+                <span class="field__label">Rojo desde (nivel) — exacto</span>
+                <div class="thresholdRow">
+                  <input id="soundRedNumber" class="field__input" type="number" min="0" max="100" step="1" value="90" />
+                  <button id="soundCaptureRedBtn" class="btn btn--secondary" type="button">Capturar</button>
+                </div>
+              </label>
+            </div>
+
+            <div class="soundColors" aria-label="Colores del semáforo">
+              <label class="field">
+                <span class="field__label">Color verde</span>
+                <input id="soundGreenColor" class="field__input" type="color" value="#00d26a" />
+              </label>
+
+              <label class="field">
+                <span class="field__label">Color ámbar</span>
+                <input id="soundAmberColor" class="field__input" type="color" value="#ffb000" />
+              </label>
+
+              <label class="field">
+                <span class="field__label">Color rojo</span>
+                <input id="soundRedColor" class="field__input" type="color" value="#ff3b3b" />
+              </label>
+
+              <button id="soundResetColorsBtn" class="btn btn--secondary" type="button">Restablecer colores</button>
+            </div>
+          </section>
+        </aside>
+
+        <div class="split__resizer" data-resizer="mr" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ajustar ancho entre Semáforo y Modo"></div>
+
+        <aside class="split__right">
+          <section id="modePanel" class="panel modePanel" aria-labelledby="modeTitle">
+            <div class="panel__header">
+              <div class="panel__headerRow">
+                <h2 id="modeTitle" class="panel__title">Modo de trabajo</h2>
+              </div>
+              <p class="panel__subtitle">Marca el objetivo del aula para este momento.</p>
+            </div>
+
+            <div class="modeBody" aria-label="Indicador del modo de trabajo">
+              <div id="modeBadge" class="modeBadge" role="img" aria-label="Indicador del modo">
+                <div id="modeEmoji" class="modeEmoji">🤫</div>
+                <div class="modeText">
+                  <div id="modeLabel" class="modeLabel">Explicación</div>
+                  <div id="modeHint" class="modeHint">Objetivo: semáforo en VERDE (silencio).</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="modeControls" aria-label="Seleccionar modo">
+              <button id="modeExplainBtn" class="btn" type="button">Explicación (verde)</button>
+              <button id="modeWorkBtn" class="btn btn--secondary" type="button">Trabajo (ámbar)</button>
+              <button id="modeDebateBtn" class="btn btn--secondary" type="button">Debate (rojo)</button>
+            </div>
+          </section>
+        </aside>
+      </div>
     </main>
 
     <footer class="footer">
