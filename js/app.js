@@ -18,6 +18,10 @@ const i18n = window.EduI18n;
 if (!i18n) throw new Error("Missing i18n bundle");
 const { SUPPORTED_LANGUAGES, t, getResolvedLanguage, setLanguagePreferenceGetter } = i18n;
 
+// ------------------------------
+// Configuracion de evaluacion
+// ------------------------------
+
 const COMMENT_LANGUAGE_MODES = ["val", "es", "bilingual"];
 const DEFAULT_COMMENT_CATEGORY_ORDER = ["actitud", "trabajo", "progreso"];
 const EVALUATION_PERIODS = ["eval1", "eval2", "eval3", "final"];
@@ -385,6 +389,10 @@ function saveState(state) {
   localStorage.setItem(APP_KEY, JSON.stringify(state));
 }
 
+// ------------------------------
+// Estado y helpers de evaluacion
+// ------------------------------
+
 function ensureEvaluationUi() {
   if (!state.ui) state.ui = defaultState().ui;
   if (!state.ui.evaluation || typeof state.ui.evaluation !== "object") {
@@ -620,6 +628,10 @@ function isStudentCompleted(student) {
   return hasSelection || Boolean(normalizeCommentText(evaluation.comment));
 }
 
+// ------------------------------
+// Importacion y utilidades de archivo
+// ------------------------------
+
 /**
  * Normaliza texto importado.
  * Acepta:
@@ -775,6 +787,10 @@ function el(id) {
   if (!node) throw new Error(`Missing element: ${id}`);
   return node;
 }
+
+// ------------------------------
+// Referencias DOM
+// ------------------------------
 
 const classSelect = /** @type {HTMLSelectElement} */ (el("classSelect"));
 const classNameInput = /** @type {HTMLInputElement} */ (el("className"));
@@ -1386,11 +1402,7 @@ function openTimerModalIfNeeded() {
   if (!hasAny) return;
 
   renderTimerModal();
-  if (typeof timerDialog.showModal === "function") {
-    timerDialog.showModal();
-  } else {
-    timerDialog.setAttribute("open", "");
-  }
+  openDialog(timerDialog);
 }
 
 
@@ -1437,6 +1449,10 @@ function saveClassName() {
   renderClassNameInput();
   setStatus(t("status.classNameSaved"));
 }
+
+// ------------------------------
+// Render principal
+// ------------------------------
 
 function getFilteredStudentsForSelectedClass() {
   const cls = getSelectedClass();
@@ -1881,6 +1897,16 @@ function moveSelection(delta) {
   renderStudents();
 }
 
+function persistEvaluationUi() {
+  saveState(state);
+  renderStudents();
+}
+
+function syncAndPersistStudentEvaluation(student, forceOverwrite = false, periodId = getActiveEvaluationPeriodForSelectedClass()) {
+  syncStudentEvaluationComment(student, forceOverwrite, periodId);
+  persistEvaluationUi();
+}
+
 function resetEvaluationForStudent(student) {
   const periodId = getActiveEvaluationPeriodForSelectedClass();
   ensureStudentEvaluation(student).periods[periodId] = defaultStudentEvaluation().periods[periodId];
@@ -1928,8 +1954,7 @@ function copyCurrentEvaluationToAllVisible() {
     copied += 1;
   }
 
-  saveState(state);
-  renderStudents();
+  persistEvaluationUi();
   return { copied, skipped };
 }
 
@@ -1942,8 +1967,7 @@ function copyEvaluationPeriodForWholeClass(sourcePeriodId, targetPeriodId) {
     syncStudentEvaluationComment(student, true, targetPeriodId);
     copied += 1;
   }
-  saveState(state);
-  renderStudents();
+  persistEvaluationUi();
   return { copied };
 }
 
@@ -2075,12 +2099,7 @@ function renderHistoryModal(student) {
 function openHistoryModal(student) {
   lastHistoryStudentId = student.id;
   renderHistoryModal(student);
-
-  if (typeof historyDialog.showModal === "function") {
-    historyDialog.showModal();
-  } else {
-    historyDialog.setAttribute("open", "");
-  }
+  openDialog(historyDialog);
 }
 
 function renderClassHistoryModal() {
@@ -2139,11 +2158,7 @@ function renderClassHistoryModal() {
 
 function openClassHistoryModal() {
   renderClassHistoryModal();
-  if (typeof classHistoryDialog.showModal === "function") {
-    classHistoryDialog.showModal();
-  } else {
-    classHistoryDialog.setAttribute("open", "");
-  }
+  openDialog(classHistoryDialog);
 }
 
 function tickTimers() {
@@ -2262,18 +2277,48 @@ function readFileAsText(file) {
   });
 }
 
-function openEvalHelpDialog() {
-  if (typeof evalHelpDialog.showModal === "function") {
-    evalHelpDialog.showModal();
+/**
+ * Helpers de dialogo reutilizables para mantener el flujo de UI consistente.
+ * @param {HTMLDialogElement} dialog
+ */
+function openDialog(dialog) {
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
   } else {
-    evalHelpDialog.setAttribute("open", "");
+    dialog.setAttribute("open", "");
   }
 }
 
-function closeEvalHelpDialog() {
-  evalHelpDialog.close?.();
-  evalHelpDialog.removeAttribute("open");
+/**
+ * @param {HTMLDialogElement} dialog
+ */
+function closeDialog(dialog) {
+  dialog.close?.();
+  dialog.removeAttribute("open");
 }
+
+/**
+ * @param {HTMLDialogElement} dialog
+ */
+function bindBackdropClose(dialog) {
+  dialog.addEventListener("click", (e) => {
+    if (e.target === dialog) {
+      closeDialog(dialog);
+    }
+  });
+}
+
+function openEvalHelpDialog() {
+  openDialog(evalHelpDialog);
+}
+
+function closeEvalHelpDialog() {
+  closeDialog(evalHelpDialog);
+}
+
+// ------------------------------
+// Eventos de interfaz
+// ------------------------------
 
 // Eventos
 openImportBtn.addEventListener("click", () => {
@@ -2281,26 +2326,11 @@ openImportBtn.addEventListener("click", () => {
   negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
   posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
   renderPhraseEditors();
-
-  if (typeof importDialog.showModal === "function") {
-    importDialog.showModal();
-  } else {
-    // Fallback muy simple si el navegador no soporta <dialog>
-    importDialog.setAttribute("open", "");
-  }
+  openDialog(importDialog);
 });
 
 closeImportBtn.addEventListener("click", () => {
-  importDialog.close?.();
-  importDialog.removeAttribute("open");
-});
-
-importDialog.addEventListener("click", (e) => {
-  // Cerrar al pinchar fuera del cuadro (backdrop)
-  if (e.target === importDialog) {
-    importDialog.close?.();
-    importDialog.removeAttribute("open");
-  }
+  closeDialog(importDialog);
 });
 
 openEvalHelpBtn.addEventListener("click", () => {
@@ -2309,12 +2339,6 @@ openEvalHelpBtn.addEventListener("click", () => {
 
 closeEvalHelpBtn.addEventListener("click", () => {
   closeEvalHelpDialog();
-});
-
-evalHelpDialog.addEventListener("click", (e) => {
-  if (e.target === evalHelpDialog) {
-    closeEvalHelpDialog();
-  }
 });
 
 classSelect.addEventListener("change", () => {
@@ -2397,9 +2421,11 @@ languageSelect.addEventListener("change", () => {
 commentLanguageModeSelect.addEventListener("change", () => {
   setCommentLanguageMode(commentLanguageModeSelect.value);
   const student = getSelectedStudent();
-  if (student) syncStudentEvaluationComment(student, true);
-  saveState(state);
-  renderStudents();
+  if (student) {
+    syncAndPersistStudentEvaluation(student, true);
+    return;
+  }
+  persistEvaluationUi();
 });
 
 timerPlayBtn.addEventListener("click", () => {
@@ -2411,27 +2437,11 @@ timerPauseBtn.addEventListener("click", () => {
 });
 
 closeTimerBtn.addEventListener("click", () => {
-  timerDialog.close?.();
-  timerDialog.removeAttribute("open");
-});
-
-timerDialog.addEventListener("click", (e) => {
-  if (e.target === timerDialog) {
-    timerDialog.close?.();
-    timerDialog.removeAttribute("open");
-  }
+  closeDialog(timerDialog);
 });
 
 closeHistoryBtn.addEventListener("click", () => {
-  historyDialog.close?.();
-  historyDialog.removeAttribute("open");
-});
-
-historyDialog.addEventListener("click", (e) => {
-  if (e.target === historyDialog) {
-    historyDialog.close?.();
-    historyDialog.removeAttribute("open");
-  }
+  closeDialog(historyDialog);
 });
 
 openClassHistoryBtn.addEventListener("click", () => {
@@ -2443,16 +2453,14 @@ openClassHistoryBtn.addEventListener("click", () => {
 });
 
 closeClassHistoryBtn.addEventListener("click", () => {
-  classHistoryDialog.close?.();
-  classHistoryDialog.removeAttribute("open");
+  closeDialog(classHistoryDialog);
 });
 
-classHistoryDialog.addEventListener("click", (e) => {
-  if (e.target === classHistoryDialog) {
-    classHistoryDialog.close?.();
-    classHistoryDialog.removeAttribute("open");
-  }
-});
+bindBackdropClose(importDialog);
+bindBackdropClose(evalHelpDialog);
+bindBackdropClose(timerDialog);
+bindBackdropClose(historyDialog);
+bindBackdropClose(classHistoryDialog);
 
 resetClassBtn.addEventListener("click", () => {
   const cls = getSelectedClass();
@@ -2516,8 +2524,7 @@ copyFromPreviousBtn.addEventListener("click", () => {
   const student = getSelectedStudent();
   if (!student) return;
   const copied = copyPreviousEvaluationToCurrent(student);
-  saveState(state);
-  renderStudents();
+  persistEvaluationUi();
   setTransientStatus(t(copied ? "eval.status.copiedPrevious" : "eval.status.noPrevious"));
 });
 
@@ -2568,18 +2575,16 @@ copyToAllBtn.addEventListener("click", () => {
 
 saveEvaluationBtn.addEventListener("click", () => {
   const student = getSelectedStudent();
-  if (student) syncStudentEvaluationComment(student);
-  saveState(state);
+  if (student) syncAndPersistStudentEvaluation(student);
+  else persistEvaluationUi();
   setTransientStatus(t("eval.status.saved"));
-  renderStudents();
 });
 
 resetEvaluationBtn.addEventListener("click", () => {
   const student = getSelectedStudent();
   if (!student) return;
   resetEvaluationForStudent(student);
-  saveState(state);
-  renderStudents();
+  persistEvaluationUi();
 });
 
 exportCsvBtn.addEventListener("click", () => {
@@ -2627,8 +2632,7 @@ importApplyBtn.addEventListener("click", async () => {
     );
 
     // Cierra el modal tras importar
-    importDialog.close?.();
-    importDialog.removeAttribute("open");
+    closeDialog(importDialog);
   } catch (e) {
     setTransientStatus(e instanceof Error ? e.message : t("error.import"), 4000);
   }
@@ -2646,8 +2650,7 @@ importBackupBtn.addEventListener("click", async () => {
   try {
     await importBackupFromUi();
     // Cierra el modal tras importar
-    importDialog.close?.();
-    importDialog.removeAttribute("open");
+    closeDialog(importDialog);
   } catch (e) {
     setTransientStatus(e instanceof Error ? e.message : t("error.import"), 4000);
   }
@@ -2730,6 +2733,10 @@ document.addEventListener("keydown", async (event) => {
 
   void tagName;
 });
+
+// ------------------------------
+// Inicializacion
+// ------------------------------
 
 // Init
 renderClassSelect();
