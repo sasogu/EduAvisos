@@ -327,6 +327,7 @@ María García" data-i18n-attr="placeholder:config.importPaste.placeholder"></te
               <div class="panel__headerRow">
                 <h2 id="evaluationTitle" class="panel__title" data-i18n="eval.title">Comentarios de evaluación</h2>
                 <div class="evalHeaderActions">
+                  <button id="openEvalHelpBtn" class="btn btn--secondary" type="button" data-i18n="eval.help">Ayuda</button>
                   <button id="copyCommentBtn" class="btn btn--secondary" type="button" data-i18n="eval.copy">Copiar</button>
                   <button id="copyNextBtn" class="btn" type="button" data-i18n="eval.copyNext">Copiar y siguiente</button>
                 </div>
@@ -402,10 +403,39 @@ María García" data-i18n-attr="placeholder:config.importPaste.placeholder"></te
                   <textarea id="evalComment" class="field__input field__textarea evalComment" rows="8" data-i18n-attr="placeholder:eval.comment.placeholder" placeholder="El comentario se generará automáticamente y podrás editarlo si lo necesitas."></textarea>
                 </label>
 
-                <p class="evalShortcuts" data-i18n="eval.shortcuts">Atajos: 1-9 selecciona opción, Tab cambia de categoría, Enter copia y pasa, Ctrl+S guarda, Ctrl+C copia, Flechas arriba/abajo cambian de alumno.</p>
+                <div class="evalQuickHelp" aria-label="Atajos rápidos">
+                  <span class="evalQuickHelp__title" data-i18n="eval.shortcuts.title">Atajos rápidos</span>
+                  <span class="evalShortcutChip"><strong>`1-9`</strong> <span data-i18n="eval.shortcuts.1">opción</span></span>
+                  <span class="evalShortcutChip"><strong>`Tab`</strong> <span data-i18n="eval.shortcuts.2">categoría</span></span>
+                  <span class="evalShortcutChip"><strong>`↑↓`</strong> <span data-i18n="eval.shortcuts.3">alumno</span></span>
+                  <span class="evalShortcutChip"><strong>`Enter`</strong> <span data-i18n="eval.shortcuts.4">copiar y siguiente</span></span>
+                  <span class="evalShortcutChip"><strong>`Ctrl+S`</strong> <span data-i18n="eval.shortcuts.5">guardar</span></span>
+                  <span class="evalShortcutChip"><strong>`Ctrl+C`</strong> <span data-i18n="eval.shortcuts.6">copiar</span></span>
+                  <span class="evalShortcutChip"><strong>`F1`</strong> <span data-i18n="eval.shortcuts.7">ayuda</span></span>
+                </div>
               </div>
             </div>
           </section>
+
+          <dialog id="evalHelpDialog" class="modal" aria-labelledby="evalHelpDialogTitle">
+            <div class="modal__header">
+              <h3 id="evalHelpDialogTitle" class="modal__title" data-i18n="eval.help.title">Atajos de teclado</h3>
+              <button id="closeEvalHelpBtn" class="btn btn--secondary" type="button" data-i18n="action.close">Cerrar</button>
+            </div>
+
+            <p class="modal__subtitle" data-i18n="eval.help.subtitle">Ayuda rápida para usar la evaluación de forma intensiva con teclado.</p>
+
+            <ul class="list">
+              <li class="item"><span class="left"><span class="name">`1-9`</span></span><span class="right"><span class="count" data-i18n="eval.help.1">Seleccionar opción dentro de la categoría activa</span></span></li>
+              <li class="item"><span class="left"><span class="name">`Tab`</span></span><span class="right"><span class="count" data-i18n="eval.help.2">Pasar a la siguiente categoría</span></span></li>
+              <li class="item"><span class="left"><span class="name">`Shift+Tab`</span></span><span class="right"><span class="count" data-i18n="eval.help.3">Volver a la categoría anterior</span></span></li>
+              <li class="item"><span class="left"><span class="name">`Flecha arriba / abajo`</span></span><span class="right"><span class="count" data-i18n="eval.help.4">Cambiar de alumno</span></span></li>
+              <li class="item"><span class="left"><span class="name">`Enter`</span></span><span class="right"><span class="count" data-i18n="eval.help.5">Copiar comentario y pasar al siguiente alumno</span></span></li>
+              <li class="item"><span class="left"><span class="name">`Ctrl+S`</span></span><span class="right"><span class="count" data-i18n="eval.help.6">Guardar</span></span></li>
+              <li class="item"><span class="left"><span class="name">`Ctrl+C`</span></span><span class="right"><span class="count" data-i18n="eval.help.7">Copiar comentario</span></span></li>
+              <li class="item"><span class="left"><span class="name">`F1`</span></span><span class="right"><span class="count" data-i18n="eval.help.8">Abrir o cerrar esta ayuda</span></span></li>
+            </ul>
+          </dialog>
 
           <section id="modePanel" class="panel modePanel" aria-labelledby="modeTitle">
             <div class="panel__header">

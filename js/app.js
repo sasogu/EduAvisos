@@ -833,6 +833,9 @@ const evalCategories = /** @type {HTMLDivElement} */ (el("evalCategories"));
 const evaluationPeriodSelect = /** @type {HTMLSelectElement} */ (el("evaluationPeriod"));
 const evalObservation = /** @type {HTMLTextAreaElement} */ (el("evalObservation"));
 const evalComment = /** @type {HTMLTextAreaElement} */ (el("evalComment"));
+const openEvalHelpBtn = /** @type {HTMLButtonElement} */ (el("openEvalHelpBtn"));
+const evalHelpDialog = /** @type {HTMLDialogElement} */ (el("evalHelpDialog"));
+const closeEvalHelpBtn = /** @type {HTMLButtonElement} */ (el("closeEvalHelpBtn"));
 const commentLanguageModeSelect = /** @type {HTMLSelectElement} */ (el("commentLanguageMode"));
 const bulkCopyTargetPeriodSelect = /** @type {HTMLSelectElement} */ (el("bulkCopyTargetPeriod"));
 const copyPeriodToPeriodBtn = /** @type {HTMLButtonElement} */ (el("copyPeriodToPeriodBtn"));
@@ -2259,6 +2262,19 @@ function readFileAsText(file) {
   });
 }
 
+function openEvalHelpDialog() {
+  if (typeof evalHelpDialog.showModal === "function") {
+    evalHelpDialog.showModal();
+  } else {
+    evalHelpDialog.setAttribute("open", "");
+  }
+}
+
+function closeEvalHelpDialog() {
+  evalHelpDialog.close?.();
+  evalHelpDialog.removeAttribute("open");
+}
+
 // Eventos
 openImportBtn.addEventListener("click", () => {
   // Sincroniza valores de configuración al abrir
@@ -2284,6 +2300,20 @@ importDialog.addEventListener("click", (e) => {
   if (e.target === importDialog) {
     importDialog.close?.();
     importDialog.removeAttribute("open");
+  }
+});
+
+openEvalHelpBtn.addEventListener("click", () => {
+  openEvalHelpDialog();
+});
+
+closeEvalHelpBtn.addEventListener("click", () => {
+  closeEvalHelpDialog();
+});
+
+evalHelpDialog.addEventListener("click", (e) => {
+  if (e.target === evalHelpDialog) {
+    closeEvalHelpDialog();
   }
 });
 
@@ -2628,6 +2658,13 @@ document.addEventListener("keydown", async (event) => {
   const tagName = target instanceof HTMLElement ? target.tagName : "";
   const isEditableField = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
   const isCommentField = target === evalObservation || target === evalComment;
+
+  if (event.key === "F1") {
+    event.preventDefault();
+    if (evalHelpDialog.open || evalHelpDialog.hasAttribute("open")) closeEvalHelpDialog();
+    else openEvalHelpDialog();
+    return;
+  }
 
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
     event.preventDefault();

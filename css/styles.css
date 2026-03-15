@@ -341,10 +341,39 @@ body {
   min-height: 180px;
 }
 
-.evalShortcuts {
-  margin: 0;
+.evalQuickHelp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.evalQuickHelp__title {
   color: var(--muted);
   font-size: 12px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.evalShortcutChip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.evalShortcutChip strong {
+  color: var(--muted);
 }
 
 .modePanel[data-mode="green"] .modeBadge {
