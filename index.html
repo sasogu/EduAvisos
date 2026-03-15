@@ -180,6 +180,14 @@ María García" data-i18n-attr="placeholder:config.importPaste.placeholder"></te
             <button id="openClassHistoryBtn" class="btn btn--secondary" type="button" data-i18n="list.classHistory">Histórico de la clase</button>
             <div class="listControls">
               <label class="field field--inline">
+                <span class="field__label" data-i18n="eval.filter.label">Evaluación</span>
+                <select id="completionFilter" class="field__input field__input--small">
+                  <option value="all" data-i18n="eval.filter.all">Todos</option>
+                  <option value="pending" data-i18n="eval.filter.pending">Pendientes</option>
+                  <option value="completed" data-i18n="eval.filter.completed">Completados</option>
+                </select>
+              </label>
+              <label class="field field--inline">
                 <span class="field__label" data-i18n="list.filter.neg">☹︎ ≥</span>
                 <input id="minCount" class="field__input field__input--small" type="number" min="0" step="1" value="0" />
               </label>
@@ -302,6 +310,85 @@ María García" data-i18n-attr="placeholder:config.importPaste.placeholder"></te
         <div class="split__resizer" data-resizer="mr" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ajustar ancho entre Semáforo y Modo" data-i18n-attr="aria-label:resizer.mr"></div>
 
         <aside class="split__right">
+          <section id="evaluationPanel" class="panel evalPanel" aria-labelledby="evaluationTitle">
+            <div class="panel__header">
+              <div class="panel__headerRow">
+                <h2 id="evaluationTitle" class="panel__title" data-i18n="eval.title">Comentarios de evaluación</h2>
+                <div class="evalHeaderActions">
+                  <button id="copyCommentBtn" class="btn btn--secondary" type="button" data-i18n="eval.copy">Copiar</button>
+                  <button id="copyNextBtn" class="btn" type="button" data-i18n="eval.copyNext">Copiar y siguiente</button>
+                </div>
+              </div>
+              <p class="panel__subtitle" data-i18n="eval.subtitle">Selecciona frases con teclado y genera el comentario final en segundos.</p>
+            </div>
+
+            <div class="evalBody">
+              <div class="evalSummary" aria-live="polite">
+                <div class="evalSummaryCard">
+                  <span class="field__label" data-i18n="eval.current">Alumno actual</span>
+                  <strong id="evalCurrentName" class="evalCurrentName">Sin alumnos</strong>
+                  <span id="evalCurrentMeta" class="evalCurrentMeta">0 de 0</span>
+                </div>
+                <div class="evalSummaryGrid">
+                  <div class="evalMetric">
+                    <span class="field__label" data-i18n="eval.progress">Avance</span>
+                    <strong id="evalProgressText">0%</strong>
+                  </div>
+                  <div class="evalMetric">
+                    <span class="field__label" data-i18n="eval.pendingCount">Pendientes</span>
+                    <strong id="evalPendingCount">0</strong>
+                  </div>
+                  <div class="evalMetric">
+                    <span class="field__label" data-i18n="eval.state">Estado</span>
+                    <strong id="evalCurrentState">Pendiente</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="evalToolbar">
+                <label class="field">
+                  <span class="field__label" data-i18n="eval.period.label">Evaluación activa</span>
+                  <select id="evaluationPeriod" class="field__input">
+                    <option value="eval1" data-i18n="eval.period.eval1">1ª evaluación</option>
+                    <option value="eval2" data-i18n="eval.period.eval2">2ª evaluación</option>
+                    <option value="eval3" data-i18n="eval.period.eval3">3ª evaluación</option>
+                    <option value="final" data-i18n="eval.period.final">Final</option>
+                  </select>
+                </label>
+                <label class="field field--grow">
+                  <span class="field__label" data-i18n="eval.languageMode">Salida del comentario</span>
+                  <select id="commentLanguageMode" class="field__input">
+                    <option value="val" data-i18n="eval.language.val">Solo valenciano</option>
+                    <option value="es" data-i18n="eval.language.es">Solo castellano</option>
+                    <option value="bilingual" data-i18n="eval.language.bilingual">Bilingüe</option>
+                  </select>
+                </label>
+                <button id="copyFromPreviousBtn" class="btn btn--secondary" type="button" data-i18n="eval.copyPrevious">Copiar evaluación anterior</button>
+                <button id="saveEvaluationBtn" class="btn btn--secondary" type="button" data-i18n="eval.save">Guardar</button>
+                <button id="resetEvaluationBtn" class="btn btn--secondary" type="button" data-i18n="eval.reset">Reiniciar alumno</button>
+                <button id="exportCsvBtn" class="btn btn--secondary" type="button" data-i18n="eval.export">Exportar CSV</button>
+              </div>
+
+              <div id="evalEmpty" class="empty" hidden data-i18n="eval.empty">Importa o crea alumnos para usar la evaluación rápida.</div>
+
+              <div id="evalWorkspace" class="evalWorkspace">
+                <div id="evalCategories" class="evalCategories" aria-live="polite"></div>
+
+                <label class="field">
+                  <span class="field__label" data-i18n="eval.observation">Observación libre</span>
+                  <textarea id="evalObservation" class="field__input field__textarea evalObservation" rows="3" data-i18n-attr="placeholder:eval.observation.placeholder" placeholder="Añade una nota opcional para este alumno"></textarea>
+                </label>
+
+                <label class="field">
+                  <span class="field__label" data-i18n="eval.comment">Comentario final</span>
+                  <textarea id="evalComment" class="field__input field__textarea evalComment" rows="8" data-i18n-attr="placeholder:eval.comment.placeholder" placeholder="El comentario se generará automáticamente y podrás editarlo si lo necesitas."></textarea>
+                </label>
+
+                <p class="evalShortcuts" data-i18n="eval.shortcuts">Atajos: 1-9 selecciona opción, Tab cambia de categoría, Enter copia y pasa, Ctrl+S guarda, Ctrl+C copia, Flechas arriba/abajo cambian de alumno.</p>
+              </div>
+            </div>
+          </section>
+
           <section id="modePanel" class="panel modePanel" aria-labelledby="modeTitle">
             <div class="panel__header">
               <div class="panel__headerRow">

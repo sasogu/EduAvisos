@@ -166,6 +166,182 @@ body {
   gap: 12px;
 }
 
+.evalPanel {
+  padding-bottom: 14px;
+}
+
+.evalBody {
+  padding: 0 14px 14px 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.evalHeaderActions {
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.evalSummary {
+  display: grid;
+  gap: 12px;
+}
+
+.evalSummaryCard,
+.evalMetric,
+.evalCategory,
+.evalWorkspace {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.evalSummaryCard {
+  padding: 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.evalSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.evalMetric {
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.evalCurrentName {
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.evalCurrentMeta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.evalToolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, auto) minmax(220px, 1fr) repeat(4, auto);
+  gap: 12px;
+  align-items: end;
+}
+
+.evalWorkspace {
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.evalCategories {
+  display: grid;
+  gap: 14px;
+}
+
+.evalCategory {
+  padding: 14px;
+}
+
+.evalCategory[data-active="true"] {
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.evalCategory__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.evalCategory__title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.evalCategory__hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.evalCategory__badge {
+  min-width: 46px;
+  text-align: center;
+  padding: 6px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.evalOptions {
+  display: grid;
+  gap: 10px;
+}
+
+.evalOption {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.evalOption:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.evalOption[data-selected="true"] {
+  background: rgba(100, 180, 120, 0.2);
+  border-color: rgba(100, 180, 120, 0.45);
+}
+
+.evalOption--active {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+}
+
+.evalOption:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 2px;
+}
+
+.evalOption__code {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.evalOption__text {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.evalObservation,
+.evalComment {
+  min-height: 96px;
+}
+
+.evalComment {
+  min-height: 180px;
+}
+
+.evalShortcuts {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .modePanel[data-mode="green"] .modeBadge {
   background: color-mix(in srgb, var(--sound-green) 22%, rgba(0,0,0,0.18));
 }
@@ -568,6 +744,22 @@ body {
   border-top: 1px solid var(--border);
 }
 
+.studentItem {
+  position: relative;
+  cursor: pointer;
+}
+
+.studentItem::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 999px;
+  background: transparent;
+}
+
 .left {
   display: flex;
   min-width: 0;
@@ -578,7 +770,7 @@ body {
   all: unset;
   cursor: pointer;
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -648,6 +840,28 @@ body {
   border-color: rgba(100, 180, 120, 0.35);
 }
 
+.studentItem[data-selected="true"] {
+  background: rgba(122, 180, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(122, 180, 255, 0.26);
+}
+
+.studentItem[data-selected="true"]::before {
+  background: #7ab4ff;
+}
+
+.studentItem[data-selected="true"] .name {
+  color: #ffffff;
+}
+
+.studentItem:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.studentItem[data-selected="true"] .badge {
+  background: rgba(122, 180, 255, 0.2);
+  border-color: rgba(122, 180, 255, 0.35);
+}
+
 .name {
   font-weight: 650;
 }
@@ -655,6 +869,21 @@ body {
 .meta {
   color: var(--muted);
   font-size: 12px;
+}
+
+.meta--soft {
+  opacity: 0.9;
+}
+
+.miniBtn--select {
+  min-width: 82px;
+}
+
+.miniBtn--select:disabled {
+  cursor: default;
+  opacity: 1;
+  background: rgba(122, 180, 255, 0.18);
+  border-color: rgba(122, 180, 255, 0.32);
 }
 
 .status {
@@ -714,6 +943,11 @@ body {
   }
 
   .soundColors {
+    grid-template-columns: 1fr;
+  }
+
+  .evalSummaryGrid,
+  .evalToolbar {
     grid-template-columns: 1fr;
   }
 

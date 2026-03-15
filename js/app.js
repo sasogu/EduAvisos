@@ -9,7 +9,7 @@
 const APP_KEY = "edunotas_asistencia_v1";
 
 /** @typedef {{ ts: number, type: "neg"|"pos", delta: number }} StudentEvent */
-/** @typedef {{ id: string, name: string, marked?: boolean, count: number, positiveCount?: number, negExpiresAt?: number, negSpentMs?: number, history?: StudentEvent[] }} Student */
+/** @typedef {{ id: string, name: string, marked?: boolean, count: number, positiveCount?: number, negExpiresAt?: number, negSpentMs?: number, history?: StudentEvent[], evaluation?: { periods?: Record<string, { selections?: Record<string, string>, observation?: string, comment?: string, lastAutoComment?: string }> } }} Student */
 /** @typedef {{ classes: Record<string, { name: string, students: Student[] }>, ui?: { minCountByClass?: Record<string, number>, minPositiveByClass?: Record<string, number>, timerRunning?: boolean, timerFrozenAt?: number, negMinutesPerPoint?: number, posMinutesPerPoint?: number, lastTickNow?: number } }} AppState */
 
 const DEFAULT_NEG_MINUTES_PER_POINT = 5;
@@ -17,6 +17,42 @@ const DEFAULT_POS_MINUTES_PER_POINT = 5;
 const i18n = window.EduI18n;
 if (!i18n) throw new Error("Missing i18n bundle");
 const { SUPPORTED_LANGUAGES, t, getResolvedLanguage, setLanguagePreferenceGetter } = i18n;
+
+const COMMENT_LANGUAGE_MODES = ["val", "es", "bilingual"];
+const COMMENT_CATEGORY_ORDER = ["actitud", "trabajo", "progreso"];
+const EVALUATION_PERIODS = ["eval1", "eval2", "eval3", "final"];
+const COMMENT_CATEGORIES = {
+  actitud: {
+    label: "Actitud",
+    options: [
+      { id: "A1", val: "Manté una actitud respectuosa i participativa a classe.", es: "Mantiene una actitud respetuosa y participativa en clase." },
+      { id: "A2", val: "Participa de manera adequada en les activitats proposades.", es: "Participa de forma adecuada en las actividades propuestas." },
+      { id: "A3", val: "Escolta amb atenció i respecta els torns de paraula.", es: "Escucha con atención y respeta los turnos de palabra." },
+      { id: "A4", val: "Mostra una actitud positiva davant l'aprenentatge.", es: "Muestra una actitud positiva ante el aprendizaje." },
+      { id: "A5", val: "Necessita millorar la seua implicació i constància a l'aula.", es: "Necesita mejorar su implicación y constancia en el aula." },
+    ],
+  },
+  trabajo: {
+    label: "Trabajo",
+    options: [
+      { id: "T1", val: "Realitza les tasques amb responsabilitat i autonomia.", es: "Realiza las tareas con responsabilidad y autonomía." },
+      { id: "T2", val: "Completa les activitats en el temps previst amb bona presentació.", es: "Completa las actividades en el tiempo previsto y con buena presentación." },
+      { id: "T3", val: "Treballa amb ordre i segueix adequadament les indicacions.", es: "Trabaja con orden y sigue adecuadamente las indicaciones." },
+      { id: "T4", val: "Mostra constància en el treball diari i una bona disposició.", es: "Muestra constancia en el trabajo diario y una buena disposición." },
+      { id: "T5", val: "Necessita reforçar l'hàbit de treball i acabar les tasques proposades.", es: "Necesita reforzar el hábito de trabajo y terminar las tareas propuestas." },
+    ],
+  },
+  progreso: {
+    label: "Progreso",
+    options: [
+      { id: "P1", val: "Progressa adequadament en els continguts treballats.", es: "Progresa adecuadamente en los contenidos trabajados." },
+      { id: "P2", val: "Ha mostrat una evolució positiva al llarg del trimestre.", es: "Ha mostrado una evolución positiva a lo largo del trimestre." },
+      { id: "P3", val: "Consolida progressivament els aprenentatges bàsics.", es: "Consolida progresivamente los aprendizajes básicos." },
+      { id: "P4", val: "Avança amb seguretat quan treballa amb atenció i constància.", es: "Avanza con seguridad cuando trabaja con atención y constancia." },
+      { id: "P5", val: "Encara necessita suport per consolidar alguns aprenentatges.", es: "Todavía necesita apoyo para consolidar algunos aprendizajes." },
+    ],
+  },
+};
 
 let state;
 setLanguagePreferenceGetter(() => {
@@ -32,6 +68,27 @@ function getLanguagePreference() {
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function defaultStudentEvaluation() {
+  return {
+    periods: Object.fromEntries(EVALUATION_PERIODS.map((periodId) => [periodId, {
+      selections: Object.fromEntries(COMMENT_CATEGORY_ORDER.map((categoryId) => [categoryId, ""])),
+      observation: "",
+      comment: "",
+      lastAutoComment: "",
+    }])),
+  };
+}
+
+function defaultEvaluationUi() {
+  return {
+    selectedStudentByClass: {},
+    completionFilterByClass: {},
+    activeCategoryByClass: {},
+    commentLanguageMode: "bilingual",
+    activePeriodByClass: {},
+  };
 }
 
 /** @returns {AppState} */
@@ -53,6 +110,7 @@ function defaultState() {
       posMinutesPerPoint: DEFAULT_POS_MINUTES_PER_POINT,
       lastTickNow: Date.now(),
       language: "auto",
+      evaluation: defaultEvaluationUi(),
     },
   };
 }
@@ -88,6 +146,24 @@ function loadState() {
     if (typeof migrated.ui.lastTickNow !== "number" || !Number.isFinite(migrated.ui.lastTickNow)) {
       migrated.ui.lastTickNow = Date.now();
     }
+    if (!migrated.ui.evaluation || typeof migrated.ui.evaluation !== "object") {
+      migrated.ui.evaluation = defaultEvaluationUi();
+    }
+    if (!migrated.ui.evaluation.selectedStudentByClass || typeof migrated.ui.evaluation.selectedStudentByClass !== "object") {
+      migrated.ui.evaluation.selectedStudentByClass = {};
+    }
+    if (!migrated.ui.evaluation.completionFilterByClass || typeof migrated.ui.evaluation.completionFilterByClass !== "object") {
+      migrated.ui.evaluation.completionFilterByClass = {};
+    }
+    if (!migrated.ui.evaluation.activeCategoryByClass || typeof migrated.ui.evaluation.activeCategoryByClass !== "object") {
+      migrated.ui.evaluation.activeCategoryByClass = {};
+    }
+    if (!migrated.ui.evaluation.activePeriodByClass || typeof migrated.ui.evaluation.activePeriodByClass !== "object") {
+      migrated.ui.evaluation.activePeriodByClass = {};
+    }
+    if (!COMMENT_LANGUAGE_MODES.includes(migrated.ui.evaluation.commentLanguageMode)) {
+      migrated.ui.evaluation.commentLanguageMode = "bilingual";
+    }
 
     for (const classId of Object.keys(migrated.classes)) {
       const cls = migrated.classes[classId];
@@ -98,6 +174,42 @@ function loadState() {
         if (typeof s.marked !== "boolean") s.marked = false;
         if (typeof s.negSpentMs !== "number" || !Number.isFinite(s.negSpentMs) || s.negSpentMs < 0) s.negSpentMs = 0;
         if (!Array.isArray(s.history)) s.history = [];
+        if (!s.evaluation || typeof s.evaluation !== "object") s.evaluation = defaultStudentEvaluation();
+        if (!s.evaluation.periods || typeof s.evaluation.periods !== "object") {
+          const legacy = {
+            selections: s.evaluation.selections,
+            observation: s.evaluation.observation,
+            comment: s.evaluation.comment,
+            lastAutoComment: s.evaluation.lastAutoComment,
+          };
+          s.evaluation = defaultStudentEvaluation();
+          if (legacy && typeof legacy === "object") {
+            const target = s.evaluation.periods.eval1;
+            if (legacy.selections && typeof legacy.selections === "object") {
+              for (const categoryId of COMMENT_CATEGORY_ORDER) {
+                if (typeof legacy.selections[categoryId] === "string") target.selections[categoryId] = legacy.selections[categoryId];
+              }
+            }
+            if (typeof legacy.observation === "string") target.observation = legacy.observation;
+            if (typeof legacy.comment === "string") target.comment = legacy.comment;
+            if (typeof legacy.lastAutoComment === "string") target.lastAutoComment = legacy.lastAutoComment;
+          }
+        }
+        for (const periodId of EVALUATION_PERIODS) {
+          if (!s.evaluation.periods[periodId] || typeof s.evaluation.periods[periodId] !== "object") {
+            s.evaluation.periods[periodId] = defaultStudentEvaluation().periods[periodId];
+          }
+          const period = s.evaluation.periods[periodId];
+          if (!period.selections || typeof period.selections !== "object") {
+            period.selections = defaultStudentEvaluation().periods[periodId].selections;
+          }
+          for (const categoryId of COMMENT_CATEGORY_ORDER) {
+            if (typeof period.selections[categoryId] !== "string") period.selections[categoryId] = "";
+          }
+          if (typeof period.observation !== "string") period.observation = "";
+          if (typeof period.comment !== "string") period.comment = "";
+          if (typeof period.lastAutoComment !== "string") period.lastAutoComment = "";
+        }
 
         // Migración: si existe negExpiresAt (modelo antiguo), conviértelo a negSpentMs aproximado.
         if (typeof s.negExpiresAt === "number" && Number.isFinite(s.negExpiresAt) && (s.count ?? 0) > 0) {
@@ -224,6 +336,187 @@ function expireNegativesIfNeeded(cls) {
 /** @param {AppState} state */
 function saveState(state) {
   localStorage.setItem(APP_KEY, JSON.stringify(state));
+}
+
+function ensureEvaluationUi() {
+  if (!state.ui) state.ui = defaultState().ui;
+  if (!state.ui.evaluation || typeof state.ui.evaluation !== "object") {
+    state.ui.evaluation = defaultEvaluationUi();
+  }
+  const evalUi = state.ui.evaluation;
+  if (!evalUi.selectedStudentByClass || typeof evalUi.selectedStudentByClass !== "object") {
+    evalUi.selectedStudentByClass = {};
+  }
+  if (!evalUi.completionFilterByClass || typeof evalUi.completionFilterByClass !== "object") {
+    evalUi.completionFilterByClass = {};
+  }
+  if (!evalUi.activeCategoryByClass || typeof evalUi.activeCategoryByClass !== "object") {
+    evalUi.activeCategoryByClass = {};
+  }
+  if (!evalUi.activePeriodByClass || typeof evalUi.activePeriodByClass !== "object") {
+    evalUi.activePeriodByClass = {};
+  }
+  if (!COMMENT_LANGUAGE_MODES.includes(evalUi.commentLanguageMode)) {
+    evalUi.commentLanguageMode = "bilingual";
+  }
+  return evalUi;
+}
+
+function ensureStudentEvaluation(student) {
+  if (!student.evaluation || typeof student.evaluation !== "object") {
+    student.evaluation = defaultStudentEvaluation();
+  }
+  if (!student.evaluation.periods || typeof student.evaluation.periods !== "object") {
+    student.evaluation.periods = defaultStudentEvaluation().periods;
+  }
+  for (const periodId of EVALUATION_PERIODS) {
+    if (!student.evaluation.periods[periodId] || typeof student.evaluation.periods[periodId] !== "object") {
+      student.evaluation.periods[periodId] = defaultStudentEvaluation().periods[periodId];
+    }
+    const period = student.evaluation.periods[periodId];
+    if (!period.selections || typeof period.selections !== "object") {
+      period.selections = defaultStudentEvaluation().periods[periodId].selections;
+    }
+    for (const categoryId of COMMENT_CATEGORY_ORDER) {
+      if (typeof period.selections[categoryId] !== "string") {
+        period.selections[categoryId] = "";
+      }
+    }
+    if (typeof period.observation !== "string") period.observation = "";
+    if (typeof period.comment !== "string") period.comment = "";
+    if (typeof period.lastAutoComment !== "string") period.lastAutoComment = "";
+  }
+  return student.evaluation;
+}
+
+function getActiveEvaluationPeriodForSelectedClass() {
+  const evalUi = ensureEvaluationUi();
+  const current = evalUi.activePeriodByClass[selectedClassId];
+  return EVALUATION_PERIODS.includes(current) ? current : "eval1";
+}
+
+function setActiveEvaluationPeriodForSelectedClass(periodId) {
+  const evalUi = ensureEvaluationUi();
+  evalUi.activePeriodByClass[selectedClassId] = EVALUATION_PERIODS.includes(periodId) ? periodId : "eval1";
+  saveState(state);
+}
+
+function getEvaluationPeriodData(student, periodId = getActiveEvaluationPeriodForSelectedClass()) {
+  const evaluation = ensureStudentEvaluation(student);
+  if (!evaluation.periods[periodId]) {
+    evaluation.periods[periodId] = defaultStudentEvaluation().periods[periodId];
+  }
+  return evaluation.periods[periodId];
+}
+
+function getCompletionFilterForSelectedClass() {
+  const evalUi = ensureEvaluationUi();
+  const value = evalUi.completionFilterByClass[selectedClassId];
+  return value === "pending" || value === "completed" ? value : "all";
+}
+
+function setCompletionFilterForSelectedClass(value) {
+  const evalUi = ensureEvaluationUi();
+  evalUi.completionFilterByClass[selectedClassId] = value === "pending" || value === "completed" ? value : "all";
+  saveState(state);
+}
+
+function getCommentLanguageMode() {
+  return ensureEvaluationUi().commentLanguageMode;
+}
+
+function setCommentLanguageMode(value) {
+  const evalUi = ensureEvaluationUi();
+  evalUi.commentLanguageMode = COMMENT_LANGUAGE_MODES.includes(value) ? value : "bilingual";
+  saveState(state);
+}
+
+function getActiveCategoryForSelectedClass() {
+  const evalUi = ensureEvaluationUi();
+  const current = evalUi.activeCategoryByClass[selectedClassId];
+  return COMMENT_CATEGORY_ORDER.includes(current) ? current : COMMENT_CATEGORY_ORDER[0];
+}
+
+function setActiveCategoryForSelectedClass(categoryId) {
+  const evalUi = ensureEvaluationUi();
+  evalUi.activeCategoryByClass[selectedClassId] = COMMENT_CATEGORY_ORDER.includes(categoryId)
+    ? categoryId
+    : COMMENT_CATEGORY_ORDER[0];
+}
+
+function getSelectedStudentIdForSelectedClass() {
+  return ensureEvaluationUi().selectedStudentByClass[selectedClassId] ?? "";
+}
+
+function setSelectedStudentIdForSelectedClass(studentId) {
+  ensureEvaluationUi().selectedStudentByClass[selectedClassId] = studentId ?? "";
+}
+
+function normalizeCommentText(text) {
+  return String(text ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/([.?!])(?=[^\s])/g, "$1 ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function findOptionById(categoryId, optionId) {
+  return COMMENT_CATEGORIES[categoryId]?.options.find((option) => option.id === optionId);
+}
+
+function buildStudentComments(student, periodId = getActiveEvaluationPeriodForSelectedClass()) {
+  const evaluation = getEvaluationPeriodData(student, periodId);
+  const valParts = [];
+  const esParts = [];
+
+  for (const categoryId of COMMENT_CATEGORY_ORDER) {
+    const option = findOptionById(categoryId, evaluation.selections[categoryId]);
+    if (!option) continue;
+    valParts.push(option.val);
+    esParts.push(option.es);
+  }
+
+  if (evaluation.observation.trim()) {
+    valParts.push(evaluation.observation.trim());
+    esParts.push(evaluation.observation.trim());
+  }
+
+  const valenciano = normalizeCommentText(valParts.join(" "));
+  const castellano = normalizeCommentText(esParts.join(" "));
+  const mode = getCommentLanguageMode();
+
+  let finalComment = "";
+  if (mode === "val") finalComment = valenciano;
+  else if (mode === "es") finalComment = castellano;
+  else {
+    const sections = [];
+    if (valenciano) sections.push(`Valencià:\n${valenciano}`);
+    if (castellano) sections.push(`Castellano:\n${castellano}`);
+    finalComment = sections.join("\n\n").trim();
+  }
+
+  return {
+    valenciano,
+    castellano,
+    finalComment,
+  };
+}
+
+function syncStudentEvaluationComment(student, forceOverwrite = false, periodId = getActiveEvaluationPeriodForSelectedClass()) {
+  const evaluation = getEvaluationPeriodData(student, periodId);
+  const generated = buildStudentComments(student, periodId).finalComment;
+  if (forceOverwrite || !evaluation.comment || evaluation.comment === evaluation.lastAutoComment) {
+    evaluation.comment = generated;
+  }
+  evaluation.lastAutoComment = generated;
+}
+
+function isStudentCompleted(student) {
+  const periodId = getActiveEvaluationPeriodForSelectedClass();
+  const evaluation = getEvaluationPeriodData(student, periodId);
+  const hasSelection = COMMENT_CATEGORY_ORDER.some((categoryId) => Boolean(evaluation.selections[categoryId]));
+  return hasSelection || Boolean(normalizeCommentText(evaluation.comment));
 }
 
 /**
@@ -417,12 +710,31 @@ const classHistoryEmpty = /** @type {HTMLDivElement} */ (el("classHistoryEmpty")
 const studentList = /** @type {HTMLUListElement} */ (el("studentList"));
 const emptyState = /** @type {HTMLDivElement} */ (el("emptyState"));
 const status = /** @type {HTMLDivElement} */ (el("status"));
+const completionFilterSelect = /** @type {HTMLSelectElement} */ (el("completionFilter"));
 const minCountInput = /** @type {HTMLInputElement} */ (el("minCount"));
 const minPositiveInput = /** @type {HTMLInputElement} */ (el("minPositive"));
 const clearFilterBtn = /** @type {HTMLButtonElement} */ (el("clearFilterBtn"));
 const negMinutesPerPointInput = /** @type {HTMLInputElement} */ (el("negMinutesPerPoint"));
 const posMinutesPerPointInput = /** @type {HTMLInputElement} */ (el("posMinutesPerPoint"));
 const languageSelect = /** @type {HTMLSelectElement} */ (el("languageSelect"));
+const evalCurrentName = /** @type {HTMLElement} */ (el("evalCurrentName"));
+const evalCurrentMeta = /** @type {HTMLElement} */ (el("evalCurrentMeta"));
+const evalProgressText = /** @type {HTMLElement} */ (el("evalProgressText"));
+const evalPendingCount = /** @type {HTMLElement} */ (el("evalPendingCount"));
+const evalCurrentState = /** @type {HTMLElement} */ (el("evalCurrentState"));
+const evalEmpty = /** @type {HTMLDivElement} */ (el("evalEmpty"));
+const evalWorkspace = /** @type {HTMLDivElement} */ (el("evalWorkspace"));
+const evalCategories = /** @type {HTMLDivElement} */ (el("evalCategories"));
+const evaluationPeriodSelect = /** @type {HTMLSelectElement} */ (el("evaluationPeriod"));
+const evalObservation = /** @type {HTMLTextAreaElement} */ (el("evalObservation"));
+const evalComment = /** @type {HTMLTextAreaElement} */ (el("evalComment"));
+const commentLanguageModeSelect = /** @type {HTMLSelectElement} */ (el("commentLanguageMode"));
+const copyFromPreviousBtn = /** @type {HTMLButtonElement} */ (el("copyFromPreviousBtn"));
+const copyCommentBtn = /** @type {HTMLButtonElement} */ (el("copyCommentBtn"));
+const copyNextBtn = /** @type {HTMLButtonElement} */ (el("copyNextBtn"));
+const saveEvaluationBtn = /** @type {HTMLButtonElement} */ (el("saveEvaluationBtn"));
+const resetEvaluationBtn = /** @type {HTMLButtonElement} */ (el("resetEvaluationBtn"));
+const exportCsvBtn = /** @type {HTMLButtonElement} */ (el("exportCsvBtn"));
 
 state = loadState();
 let selectedClassId = Object.keys(state.classes)[0] ?? "clase_01";
@@ -586,6 +898,9 @@ async function importBackupFromUi() {
   syncTimerControls();
   negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
   posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
+  completionFilterSelect.value = getCompletionFilterForSelectedClass();
+  evaluationPeriodSelect.value = getActiveEvaluationPeriodForSelectedClass();
+  commentLanguageModeSelect.value = getCommentLanguageMode();
   minCountInput.value = String(getMinCountForSelectedClass());
   minPositiveInput.value = String(getMinPositiveForSelectedClass());
   renderStudents();
@@ -779,6 +1094,173 @@ function saveClassName() {
   setStatus(t("status.classNameSaved"));
 }
 
+function getFilteredStudentsForSelectedClass() {
+  const cls = getSelectedClass();
+  const minNeg = getMinCountForSelectedClass();
+  const minPos = getMinPositiveForSelectedClass();
+  const completionFilter = getCompletionFilterForSelectedClass();
+
+  return cls.students.filter((student) => {
+    ensureStudentEvaluation(student);
+    if ((student.count ?? 0) < minNeg || (student.positiveCount ?? 0) < minPos) return false;
+    if (completionFilter === "pending") return !isStudentCompleted(student);
+    if (completionFilter === "completed") return isStudentCompleted(student);
+    return true;
+  });
+}
+
+function ensureSelectedStudent() {
+  const cls = getSelectedClass();
+  const selectedId = getSelectedStudentIdForSelectedClass();
+  const visibleStudents = getFilteredStudentsForSelectedClass();
+  const visibleIds = new Set(visibleStudents.map((student) => student.id));
+
+  if (selectedId && visibleIds.has(selectedId)) return selectedId;
+
+  const fallback = visibleStudents[0]?.id ?? cls.students[0]?.id ?? "";
+  setSelectedStudentIdForSelectedClass(fallback);
+  return fallback;
+}
+
+function getSelectedStudent() {
+  const cls = getSelectedClass();
+  const selectedId = ensureSelectedStudent();
+  return cls.students.find((student) => student.id === selectedId) ?? null;
+}
+
+function getSelectedStudentPosition(studentId) {
+  const cls = getSelectedClass();
+  const allIndex = cls.students.findIndex((student) => student.id === studentId);
+  return allIndex >= 0 ? allIndex + 1 : 0;
+}
+
+function focusActiveCategoryButton() {
+  const categoryId = getActiveCategoryForSelectedClass();
+  const button = evalCategories.querySelector(`.evalOption--active[data-category-id="${categoryId}"]`)
+    || evalCategories.querySelector(`.evalOption[data-category-id="${categoryId}"]`);
+  if (button instanceof HTMLElement) button.focus();
+}
+
+function renderEvaluationPanel() {
+  const cls = getSelectedClass();
+  const students = cls.students;
+  const selectedStudent = getSelectedStudent();
+  const activePeriod = getActiveEvaluationPeriodForSelectedClass();
+  const completedCount = students.filter((student) => isStudentCompleted(student)).length;
+  const pendingCount = Math.max(0, students.length - completedCount);
+  const progress = students.length ? Math.round((completedCount / students.length) * 100) : 0;
+
+  evalPendingCount.textContent = String(pendingCount);
+  evalProgressText.textContent = `${progress}%`;
+  completionFilterSelect.value = getCompletionFilterForSelectedClass();
+  evaluationPeriodSelect.value = activePeriod;
+  commentLanguageModeSelect.value = getCommentLanguageMode();
+
+  if (!selectedStudent) {
+    evalCurrentName.textContent = t("eval.noStudents");
+    evalCurrentMeta.textContent = "0 de 0";
+    evalCurrentState.textContent = "—";
+    evalEmpty.hidden = false;
+    evalWorkspace.hidden = true;
+    evalCategories.innerHTML = "";
+    evalObservation.value = "";
+    evalComment.value = "";
+    return;
+  }
+
+  syncStudentEvaluationComment(selectedStudent, false, activePeriod);
+  const evaluation = getEvaluationPeriodData(selectedStudent, activePeriod);
+  const currentPosition = getSelectedStudentPosition(selectedStudent.id);
+  const stateKey = isStudentCompleted(selectedStudent) ? "eval.filter.completed" : "eval.filter.pending";
+  const periodIndex = EVALUATION_PERIODS.indexOf(activePeriod);
+
+  evalCurrentName.textContent = selectedStudent.name;
+  evalCurrentMeta.textContent = `${currentPosition} de ${students.length} · ${t(`eval.period.${activePeriod}`)}`;
+  evalCurrentState.textContent = t(stateKey);
+  evalEmpty.hidden = students.length !== 0;
+  evalWorkspace.hidden = false;
+  evalObservation.value = evaluation.observation;
+  evalComment.value = evaluation.comment;
+  copyFromPreviousBtn.disabled = periodIndex <= 0;
+
+  evalCategories.innerHTML = "";
+  const activeCategory = getActiveCategoryForSelectedClass();
+
+  for (const categoryId of COMMENT_CATEGORY_ORDER) {
+    const category = COMMENT_CATEGORIES[categoryId];
+    const section = document.createElement("section");
+    section.className = "evalCategory";
+    section.dataset.categoryId = categoryId;
+    if (categoryId === activeCategory) section.dataset.active = "true";
+
+    const header = document.createElement("div");
+    header.className = "evalCategory__header";
+
+    const titleWrap = document.createElement("div");
+    const title = document.createElement("h3");
+    title.className = "evalCategory__title";
+    title.textContent = category.label;
+
+    const hint = document.createElement("div");
+    hint.className = "evalCategory__hint";
+    hint.textContent = t("eval.categoryHint");
+
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(hint);
+
+    const badge = document.createElement("span");
+    badge.className = "evalCategory__badge";
+    badge.textContent = `${COMMENT_CATEGORY_ORDER.indexOf(categoryId) + 1}/${COMMENT_CATEGORY_ORDER.length}`;
+
+    header.appendChild(titleWrap);
+    header.appendChild(badge);
+    section.appendChild(header);
+
+    const options = document.createElement("div");
+    options.className = "evalOptions";
+
+    for (const [index, option] of category.options.entries()) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "evalOption";
+      button.dataset.categoryId = categoryId;
+      button.dataset.optionId = option.id;
+      button.title = `${option.id} · ${option.es}`;
+      if (evaluation.selections[categoryId] === option.id) button.dataset.selected = "true";
+      if (categoryId === activeCategory) button.classList.add("evalOption--active");
+
+      const code = document.createElement("span");
+      code.className = "evalOption__code";
+      code.textContent = `${index + 1}. ${option.id}`;
+
+      const text = document.createElement("span");
+      text.className = "evalOption__text";
+      text.textContent = option.es;
+
+      button.appendChild(code);
+      button.appendChild(text);
+
+      button.addEventListener("click", () => {
+        setActiveCategoryForSelectedClass(categoryId);
+        evaluation.selections[categoryId] = evaluation.selections[categoryId] === option.id ? "" : option.id;
+        syncStudentEvaluationComment(selectedStudent, true, activePeriod);
+        saveState(state);
+        renderStudents();
+      });
+
+      button.addEventListener("focus", () => {
+        setActiveCategoryForSelectedClass(categoryId);
+        saveState(state);
+      });
+
+      options.appendChild(button);
+    }
+
+    section.appendChild(options);
+    evalCategories.appendChild(section);
+  }
+}
+
 function renderStudents() {
   const cls = getSelectedClass();
 
@@ -790,17 +1272,21 @@ function renderStudents() {
   const total = cls.students.length;
   const minNeg = getMinCountForSelectedClass();
   const minPos = getMinPositiveForSelectedClass();
-  const visibleStudents = cls.students.filter(
-    (s) => (s.count ?? 0) >= minNeg && (s.positiveCount ?? 0) >= minPos
-  );
+  const completionFilter = getCompletionFilterForSelectedClass();
+  const visibleStudents = getFilteredStudentsForSelectedClass();
   const visibleTotal = visibleStudents.length;
+  const completedCount = cls.students.filter((student) => isStudentCompleted(student)).length;
+  const pendingCount = Math.max(0, total - completedCount);
+  const selectedStudentId = ensureSelectedStudent();
 
   if (!total) {
     setStatus("");
-  } else if (minNeg > 0 || minPos > 0) {
+  } else if (minNeg > 0 || minPos > 0 || completionFilter !== "all") {
     const parts = [];
     if (minNeg > 0) parts.push(`☹︎≥${minNeg}`);
     if (minPos > 0) parts.push(`🙂≥${minPos}`);
+    if (completionFilter === "pending") parts.push(t("eval.filter.pending"));
+    if (completionFilter === "completed") parts.push(t("eval.filter.completed"));
     setStatus(t("status.showing", { visible: visibleTotal, total, filters: parts.join(" · ") }));
   } else {
     setStatus(t("status.total", { total }));
@@ -815,6 +1301,8 @@ function renderStudents() {
     const parts = [];
     if (minNeg > 0) parts.push(`☹︎ ≥ ${minNeg}`);
     if (minPos > 0) parts.push(`🙂 ≥ ${minPos}`);
+    if (completionFilter === "pending") parts.push(t("eval.filter.pending"));
+    if (completionFilter === "completed") parts.push(t("eval.filter.completed"));
     emptyState.textContent = t("empty.filter", { filters: parts.join(` ${t("join.and")} `) });
   } else {
     emptyState.textContent = t("empty.noStudents");
@@ -822,28 +1310,49 @@ function renderStudents() {
 
   for (const student of visibleStudents) {
     const li = document.createElement("li");
-    li.className = "item";
+    li.className = "item studentItem";
+    if (student.id === selectedStudentId) li.dataset.selected = "true";
+    if (isStudentCompleted(student)) li.dataset.completed = "true";
 
     const left = document.createElement("span");
     left.className = "left";
 
+    const completionBadge = document.createElement("span");
+    completionBadge.className = "badge";
+    completionBadge.textContent = isStudentCompleted(student) ? "✓" : "•";
+    if (isStudentCompleted(student)) completionBadge.classList.add("badge--marked");
+    left.appendChild(completionBadge);
+
     const nameBtn = document.createElement("button");
     nameBtn.type = "button";
     nameBtn.className = "nameBtn";
-    nameBtn.setAttribute("aria-label", t("aria.addOne", { name: student.name }));
+    nameBtn.setAttribute("aria-label", t("aria.selectStudent", { name: student.name }));
 
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = student.name;
 
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = isStudentCompleted(student)
+      ? t("eval.list.completedIndicator")
+      : t("eval.list.pendingIndicator");
+
+    const hint = document.createElement("span");
+    hint.className = "meta meta--soft";
+    hint.textContent = student.id === selectedStudentId
+      ? t("eval.list.current")
+      : t("eval.list.clickToEdit");
+
     nameBtn.addEventListener("click", () => {
-      // Un click en el nombre siempre suma +1 aviso negativo.
-      addNegativePoint(student);
+      setSelectedStudentIdForSelectedClass(student.id);
       saveState(state);
       renderStudents();
     });
 
     nameBtn.appendChild(name);
+    nameBtn.appendChild(meta);
+    nameBtn.appendChild(hint);
     left.appendChild(nameBtn);
 
     const right = document.createElement("span");
@@ -851,6 +1360,20 @@ function renderStudents() {
 
     const counts = document.createElement("span");
     counts.className = "countGroup";
+
+    const selectBtn = document.createElement("button");
+    selectBtn.type = "button";
+    selectBtn.className = "miniBtn miniBtn--select";
+    selectBtn.textContent = student.id === selectedStudentId
+      ? t("eval.list.current")
+      : t("eval.list.select");
+    selectBtn.setAttribute("aria-label", t("aria.selectStudent", { name: student.name }));
+    selectBtn.disabled = student.id === selectedStudentId;
+    selectBtn.addEventListener("click", () => {
+      setSelectedStudentIdForSelectedClass(student.id);
+      saveState(state);
+      renderStudents();
+    });
 
     const negCount = document.createElement("span");
     negCount.className = "count";
@@ -886,6 +1409,7 @@ function renderStudents() {
     });
 
     // Orden: botón +☹︎ junto al contador ☹︎ (a la izquierda)
+    counts.appendChild(selectBtn);
     counts.appendChild(negBtn);
     counts.appendChild(negCount);
     counts.appendChild(timer);
@@ -970,8 +1494,145 @@ function renderStudents() {
 
     li.appendChild(left);
     li.appendChild(right);
+    li.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest("button")) return;
+      setSelectedStudentIdForSelectedClass(student.id);
+      saveState(state);
+      renderStudents();
+    });
     studentList.appendChild(li);
   }
+
+  renderEvaluationPanel();
+  evalPendingCount.textContent = String(pendingCount);
+}
+
+function moveSelection(delta) {
+  const visibleStudents = getFilteredStudentsForSelectedClass();
+  if (!visibleStudents.length) return;
+
+  const currentId = ensureSelectedStudent();
+  const currentIndex = Math.max(0, visibleStudents.findIndex((student) => student.id === currentId));
+  const nextIndex = Math.min(visibleStudents.length - 1, Math.max(0, currentIndex + delta));
+  setSelectedStudentIdForSelectedClass(visibleStudents[nextIndex].id);
+  saveState(state);
+  renderStudents();
+}
+
+function resetEvaluationForStudent(student) {
+  const periodId = getActiveEvaluationPeriodForSelectedClass();
+  ensureStudentEvaluation(student).periods[periodId] = defaultStudentEvaluation().periods[periodId];
+  syncStudentEvaluationComment(student, true, periodId);
+}
+
+function cloneEvaluationPeriod(source) {
+  return {
+    selections: { ...source.selections },
+    observation: source.observation,
+    comment: source.comment,
+    lastAutoComment: source.lastAutoComment,
+  };
+}
+
+function copyPreviousEvaluationToCurrent(student) {
+  const activePeriod = getActiveEvaluationPeriodForSelectedClass();
+  const currentIndex = EVALUATION_PERIODS.indexOf(activePeriod);
+  if (currentIndex <= 0) return false;
+  const previousPeriod = EVALUATION_PERIODS[currentIndex - 1];
+  const previousData = getEvaluationPeriodData(student, previousPeriod);
+  const cloned = cloneEvaluationPeriod(previousData);
+  ensureStudentEvaluation(student).periods[activePeriod] = cloned;
+  syncStudentEvaluationComment(student, true, activePeriod);
+  return true;
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text ?? "");
+  if (!value) return false;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fallback below.
+  }
+
+  const helper = document.createElement("textarea");
+  helper.value = value;
+  helper.setAttribute("readonly", "");
+  helper.style.position = "fixed";
+  helper.style.opacity = "0";
+  document.body.appendChild(helper);
+  helper.select();
+  const ok = document.execCommand("copy");
+  helper.remove();
+  return ok;
+}
+
+async function copyCurrentComment(moveNext = false) {
+  const student = getSelectedStudent();
+  if (!student) return;
+  syncStudentEvaluationComment(student);
+  saveState(state);
+  const ok = await copyTextToClipboard(getEvaluationPeriodData(student).comment);
+  setTransientStatus(ok ? t(moveNext ? "eval.status.copiedNext" : "eval.status.copied") : t("eval.status.copyError"), 3000);
+  if (moveNext) moveSelection(1);
+}
+
+function exportEvaluationsToCsv() {
+  /** @type {string[][]} */
+  const rows = [[
+    "clase",
+    "nombre",
+    "evaluacion",
+    "actitud",
+    "trabajo",
+    "progreso",
+    "observacion_libre",
+    "comentario_valenciano",
+    "comentario_castellano",
+    "comentario_final",
+    "estado",
+  ]];
+
+  for (const [classId, cls] of Object.entries(state.classes)) {
+    void classId;
+    for (const student of cls.students) {
+      ensureStudentEvaluation(student);
+      for (const periodId of EVALUATION_PERIODS) {
+        syncStudentEvaluationComment(student, false, periodId);
+        const evaluation = getEvaluationPeriodData(student, periodId);
+        const generated = buildStudentComments(student, periodId);
+        const hasSelection = COMMENT_CATEGORY_ORDER.some((categoryId) => Boolean(evaluation.selections[categoryId]));
+        const isCompleted = hasSelection || Boolean(normalizeCommentText(evaluation.comment));
+        rows.push([
+          cls.name,
+          student.name,
+          t(`eval.period.${periodId}`),
+          evaluation.selections.actitud || "",
+          evaluation.selections.trabajo || "",
+          evaluation.selections.progreso || "",
+          evaluation.observation || "",
+          generated.valenciano,
+          generated.castellano,
+          evaluation.comment || generated.finalComment,
+          isCompleted ? "completado" : "pendiente",
+        ]);
+      }
+    }
+  }
+
+  const csv = rows
+    .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, "\"\"")}"`).join(","))
+    .join("\n");
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  downloadTextFile(`eduavisos-evaluacion-${ts}.csv`, `\uFEFF${csv}`, "text/csv;charset=utf-8");
+  saveState(state);
+  setTransientStatus(t("eval.status.exported"));
 }
 
 function formatEventTs(ts) {
@@ -1177,7 +1838,15 @@ function applyImportToSelectedClass(names) {
       skipped++;
       continue;
     }
-    cls.students.push({ id: uid(), name, count: 0, positiveCount: 0, negExpiresAt: undefined, negSpentMs: 0 });
+    cls.students.push({
+      id: uid(),
+      name,
+      count: 0,
+      positiveCount: 0,
+      negExpiresAt: undefined,
+      negSpentMs: 0,
+      evaluation: defaultStudentEvaluation(),
+    });
     existingByName.set(key, cls.students[cls.students.length - 1]);
     added++;
   }
@@ -1226,6 +1895,8 @@ importDialog.addEventListener("click", (e) => {
 
 classSelect.addEventListener("change", () => {
   selectedClassId = classSelect.value;
+  completionFilterSelect.value = getCompletionFilterForSelectedClass();
+  evaluationPeriodSelect.value = getActiveEvaluationPeriodForSelectedClass();
   minCountInput.value = String(getMinCountForSelectedClass());
   minPositiveInput.value = String(getMinPositiveForSelectedClass());
   renderClassNameInput();
@@ -1260,11 +1931,23 @@ minPositiveInput.addEventListener("input", () => {
   renderStudents();
 });
 
+completionFilterSelect.addEventListener("change", () => {
+  setCompletionFilterForSelectedClass(completionFilterSelect.value);
+  renderStudents();
+});
+
+evaluationPeriodSelect.addEventListener("change", () => {
+  setActiveEvaluationPeriodForSelectedClass(evaluationPeriodSelect.value);
+  renderStudents();
+});
+
 clearFilterBtn.addEventListener("click", () => {
   minCountInput.value = "0";
   setMinCountForSelectedClass(0);
   minPositiveInput.value = "0";
   setMinPositiveForSelectedClass(0);
+  completionFilterSelect.value = "all";
+  setCompletionFilterForSelectedClass("all");
   renderStudents();
 });
 
@@ -1280,6 +1963,14 @@ posMinutesPerPointInput.addEventListener("input", () => {
 
 languageSelect.addEventListener("change", () => {
   setLanguagePreference(languageSelect.value);
+});
+
+commentLanguageModeSelect.addEventListener("change", () => {
+  setCommentLanguageMode(commentLanguageModeSelect.value);
+  const student = getSelectedStudent();
+  if (student) syncStudentEvaluationComment(student, true);
+  saveState(state);
+  renderStudents();
 });
 
 timerPlayBtn.addEventListener("click", () => {
@@ -1340,6 +2031,73 @@ resetClassBtn.addEventListener("click", () => {
   const ok = confirm(t("confirm.resetCounters", { className: cls.name }));
   if (!ok) return;
   resetMarksForSelectedClass();
+});
+
+evalObservation.addEventListener("input", () => {
+  const student = getSelectedStudent();
+  if (!student) return;
+  const evaluation = getEvaluationPeriodData(student);
+  evaluation.observation = evalObservation.value;
+  syncStudentEvaluationComment(student, true);
+  evalComment.value = evaluation.comment;
+  saveState(state);
+});
+
+evalObservation.addEventListener("blur", () => {
+  renderStudents();
+});
+
+evalComment.addEventListener("input", () => {
+  const student = getSelectedStudent();
+  if (!student) return;
+  const evaluation = getEvaluationPeriodData(student);
+  evaluation.comment = evalComment.value;
+  saveState(state);
+});
+
+evalComment.addEventListener("blur", () => {
+  renderStudents();
+});
+
+copyCommentBtn.addEventListener("click", async () => {
+  await copyCurrentComment(false);
+});
+
+copyNextBtn.addEventListener("click", async () => {
+  await copyCurrentComment(true);
+});
+
+copyFromPreviousBtn.addEventListener("click", () => {
+  const student = getSelectedStudent();
+  if (!student) return;
+  const copied = copyPreviousEvaluationToCurrent(student);
+  saveState(state);
+  renderStudents();
+  setTransientStatus(t(copied ? "eval.status.copiedPrevious" : "eval.status.noPrevious"));
+});
+
+saveEvaluationBtn.addEventListener("click", () => {
+  const student = getSelectedStudent();
+  if (student) syncStudentEvaluationComment(student);
+  saveState(state);
+  setTransientStatus(t("eval.status.saved"));
+  renderStudents();
+});
+
+resetEvaluationBtn.addEventListener("click", () => {
+  const student = getSelectedStudent();
+  if (!student) return;
+  resetEvaluationForStudent(student);
+  saveState(state);
+  renderStudents();
+});
+
+exportCsvBtn.addEventListener("click", () => {
+  try {
+    exportEvaluationsToCsv();
+  } catch (error) {
+    setTransientStatus(error instanceof Error ? error.message : t("error.export"), 4000);
+  }
 });
 
 importClearBtn.addEventListener("click", () => {
@@ -1405,14 +2163,87 @@ importBackupBtn.addEventListener("click", async () => {
   }
 });
 
+document.addEventListener("keydown", async (event) => {
+  const target = event.target;
+  const tagName = target instanceof HTMLElement ? target.tagName : "";
+  const isEditableField = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+  const isCommentField = target === evalObservation || target === evalComment;
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    saveState(state);
+    setTransientStatus(t("eval.status.saved"));
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && !isEditableField) {
+    event.preventDefault();
+    await copyCurrentComment(false);
+    return;
+  }
+
+  if (!getSelectedStudent()) return;
+  if (isCommentField) return;
+
+  if (event.key === "ArrowDown" && !isEditableField) {
+    event.preventDefault();
+    moveSelection(1);
+    return;
+  }
+
+  if (event.key === "ArrowUp" && !isEditableField) {
+    event.preventDefault();
+    moveSelection(-1);
+    return;
+  }
+
+  if (event.key === "Enter" && !isEditableField) {
+    event.preventDefault();
+    await copyCurrentComment(true);
+    return;
+  }
+
+  if (event.key === "Tab" && !isEditableField) {
+    event.preventDefault();
+    const currentIndex = COMMENT_CATEGORY_ORDER.indexOf(getActiveCategoryForSelectedClass());
+    const delta = event.shiftKey ? -1 : 1;
+    const nextIndex = (currentIndex + delta + COMMENT_CATEGORY_ORDER.length) % COMMENT_CATEGORY_ORDER.length;
+    setActiveCategoryForSelectedClass(COMMENT_CATEGORY_ORDER[nextIndex]);
+    saveState(state);
+    renderEvaluationPanel();
+    focusActiveCategoryButton();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && /^[1-9]$/.test(event.key) && !isEditableField) {
+    const categoryId = getActiveCategoryForSelectedClass();
+    const category = COMMENT_CATEGORIES[categoryId];
+    const optionIndex = Number(event.key) - 1;
+    const option = category?.options[optionIndex];
+    const student = getSelectedStudent();
+    if (!option || !student) return;
+    event.preventDefault();
+    const evaluation = ensureStudentEvaluation(student);
+    evaluation.selections[categoryId] = evaluation.selections[categoryId] === option.id ? "" : option.id;
+    syncStudentEvaluationComment(student, true);
+    saveState(state);
+    renderStudents();
+  }
+
+  void tagName;
+});
+
 // Init
 renderClassSelect();
+completionFilterSelect.value = getCompletionFilterForSelectedClass();
+evaluationPeriodSelect.value = getActiveEvaluationPeriodForSelectedClass();
 minCountInput.value = String(getMinCountForSelectedClass());
 minPositiveInput.value = String(getMinPositiveForSelectedClass());
 renderClassNameInput();
 syncTimerControls();
 negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
 posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
+commentLanguageModeSelect.value = getCommentLanguageMode();
 applyI18n();
 
 // ------------------------------
