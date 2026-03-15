@@ -33,6 +33,7 @@
             <div class="viewToggles__buttons" role="group" aria-label="Mostrar u ocultar columnas" data-i18n-attr="aria-label:app.view.toggles">
               <button id="toggleLeftColBtn" class="btn btn--secondary" type="button" aria-pressed="true" data-i18n="app.students">Alumnos</button>
               <button id="toggleMidColBtn" class="btn btn--secondary" type="button" aria-pressed="true" data-i18n="app.semaphore">Semáforo</button>
+              <button id="toggleEvalPanelBtn" class="btn btn--secondary" type="button" aria-pressed="true" data-i18n="app.evaluation">Evaluación</button>
               <button id="toggleRightColBtn" class="btn btn--secondary" type="button" aria-pressed="true" data-i18n="app.mode">Modo</button>
             </div>
           </div>
@@ -133,6 +134,17 @@ María García" data-i18n-attr="placeholder:config.importPaste.placeholder"></te
 
             <button id="importApplyBtn" class="btn" type="button" data-i18n="config.import.apply">Importar en esta clase</button>
             <button id="importClearBtn" class="btn btn--secondary" type="button" data-i18n="config.import.clear">Limpiar caja</button>
+          </div>
+        </div>
+
+        <p class="modal__subtitle" data-i18n="config.phrases.subtitle">Personaliza las frases por defecto. Usa una línea por frase con el formato: ID | valenciano | castellano</p>
+
+        <div class="config">
+          <div id="phraseEditors" class="config__stack"></div>
+          <div class="config__row">
+            <button id="addCategoryBtn" class="btn btn--secondary" type="button" data-i18n="config.phrases.addCategory">Añadir categoría</button>
+            <button id="savePhrasesBtn" class="btn" type="button" data-i18n="config.phrases.save">Guardar frases</button>
+            <button id="resetPhrasesBtn" class="btn btn--secondary" type="button" data-i18n="config.phrases.reset">Restaurar frases por defecto</button>
           </div>
         </div>
       </dialog>
@@ -363,7 +375,13 @@ María García" data-i18n-attr="placeholder:config.importPaste.placeholder"></te
                     <option value="bilingual" data-i18n="eval.language.bilingual">Bilingüe</option>
                   </select>
                 </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="eval.bulkTarget.label">Copiar a evaluación</span>
+                  <select id="bulkCopyTargetPeriod" class="field__input"></select>
+                </label>
+                <button id="copyPeriodToPeriodBtn" class="btn btn--secondary" type="button" data-i18n="eval.copyPeriodToPeriod">Copiar evaluación a toda la clase</button>
                 <button id="copyFromPreviousBtn" class="btn btn--secondary" type="button" data-i18n="eval.copyPrevious">Copiar evaluación anterior</button>
+                <button id="copyToAllBtn" class="btn btn--secondary" type="button" data-i18n="eval.copyStudentToVisible">Copiar este alumno a visibles</button>
                 <button id="saveEvaluationBtn" class="btn btn--secondary" type="button" data-i18n="eval.save">Guardar</button>
                 <button id="resetEvaluationBtn" class="btn btn--secondary" type="button" data-i18n="eval.reset">Reiniciar alumno</button>
                 <button id="exportCsvBtn" class="btn btn--secondary" type="button" data-i18n="eval.export">Exportar CSV</button>

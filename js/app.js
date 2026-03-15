@@ -19,9 +19,9 @@ if (!i18n) throw new Error("Missing i18n bundle");
 const { SUPPORTED_LANGUAGES, t, getResolvedLanguage, setLanguagePreferenceGetter } = i18n;
 
 const COMMENT_LANGUAGE_MODES = ["val", "es", "bilingual"];
-const COMMENT_CATEGORY_ORDER = ["actitud", "trabajo", "progreso"];
+const DEFAULT_COMMENT_CATEGORY_ORDER = ["actitud", "trabajo", "progreso"];
 const EVALUATION_PERIODS = ["eval1", "eval2", "eval3", "final"];
-const COMMENT_CATEGORIES = {
+const DEFAULT_COMMENT_CATEGORIES = {
   actitud: {
     label: "Actitud",
     options: [
@@ -54,6 +54,27 @@ const COMMENT_CATEGORIES = {
   },
 };
 
+function cloneCommentCategories(categories) {
+  const ids = Object.keys(categories || {});
+  return Object.fromEntries(
+    ids.map((categoryId) => {
+      const category = categories[categoryId] || DEFAULT_COMMENT_CATEGORIES[categoryId];
+      return [categoryId, {
+        label: category?.label || categoryId,
+        options: (category.options || []).map((option) => ({
+          id: option.id,
+          val: option.val,
+          es: option.es,
+        })),
+      }];
+    })
+  );
+}
+
+function getDefaultCommentCategories() {
+  return cloneCommentCategories(DEFAULT_COMMENT_CATEGORIES);
+}
+
 let state;
 setLanguagePreferenceGetter(() => {
   const pref = state?.ui?.language;
@@ -70,14 +91,28 @@ function uid() {
   return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function getDefaultCommentCategoryOrder() {
+  return [...DEFAULT_COMMENT_CATEGORY_ORDER];
+}
+
+function getCommentCategoryOrder() {
+  const evalUi = ensureEvaluationUi();
+  const ids = Array.isArray(evalUi.categoryOrder) ? evalUi.categoryOrder : [];
+  return ids.length ? [...ids] : getDefaultCommentCategoryOrder();
+}
+
+function makeBlankEvaluationPeriod(categoryIds = getDefaultCommentCategoryOrder()) {
+  return {
+    selections: Object.fromEntries(categoryIds.map((categoryId) => [categoryId, ""])),
+    observation: "",
+    comment: "",
+    lastAutoComment: "",
+  };
+}
+
 function defaultStudentEvaluation() {
   return {
-    periods: Object.fromEntries(EVALUATION_PERIODS.map((periodId) => [periodId, {
-      selections: Object.fromEntries(COMMENT_CATEGORY_ORDER.map((categoryId) => [categoryId, ""])),
-      observation: "",
-      comment: "",
-      lastAutoComment: "",
-    }])),
+    periods: Object.fromEntries(EVALUATION_PERIODS.map((periodId) => [periodId, makeBlankEvaluationPeriod()])),
   };
 }
 
@@ -88,6 +123,9 @@ function defaultEvaluationUi() {
     activeCategoryByClass: {},
     commentLanguageMode: "bilingual",
     activePeriodByClass: {},
+    bulkCopyTargetByClass: {},
+    phraseCatalog: getDefaultCommentCategories(),
+    categoryOrder: getDefaultCommentCategoryOrder(),
   };
 }
 
@@ -161,6 +199,15 @@ function loadState() {
     if (!migrated.ui.evaluation.activePeriodByClass || typeof migrated.ui.evaluation.activePeriodByClass !== "object") {
       migrated.ui.evaluation.activePeriodByClass = {};
     }
+    if (!migrated.ui.evaluation.bulkCopyTargetByClass || typeof migrated.ui.evaluation.bulkCopyTargetByClass !== "object") {
+      migrated.ui.evaluation.bulkCopyTargetByClass = {};
+    }
+    if (!migrated.ui.evaluation.phraseCatalog || typeof migrated.ui.evaluation.phraseCatalog !== "object") {
+      migrated.ui.evaluation.phraseCatalog = getDefaultCommentCategories();
+    }
+    if (!Array.isArray(migrated.ui.evaluation.categoryOrder)) {
+      migrated.ui.evaluation.categoryOrder = Object.keys(migrated.ui.evaluation.phraseCatalog || {});
+    }
     if (!COMMENT_LANGUAGE_MODES.includes(migrated.ui.evaluation.commentLanguageMode)) {
       migrated.ui.evaluation.commentLanguageMode = "bilingual";
     }
@@ -186,7 +233,7 @@ function loadState() {
           if (legacy && typeof legacy === "object") {
             const target = s.evaluation.periods.eval1;
             if (legacy.selections && typeof legacy.selections === "object") {
-              for (const categoryId of COMMENT_CATEGORY_ORDER) {
+              for (const categoryId of getDefaultCommentCategoryOrder()) {
                 if (typeof legacy.selections[categoryId] === "string") target.selections[categoryId] = legacy.selections[categoryId];
               }
             }
@@ -197,13 +244,13 @@ function loadState() {
         }
         for (const periodId of EVALUATION_PERIODS) {
           if (!s.evaluation.periods[periodId] || typeof s.evaluation.periods[periodId] !== "object") {
-            s.evaluation.periods[periodId] = defaultStudentEvaluation().periods[periodId];
+            s.evaluation.periods[periodId] = makeBlankEvaluationPeriod();
           }
           const period = s.evaluation.periods[periodId];
           if (!period.selections || typeof period.selections !== "object") {
-            period.selections = defaultStudentEvaluation().periods[periodId].selections;
+            period.selections = makeBlankEvaluationPeriod().selections;
           }
-          for (const categoryId of COMMENT_CATEGORY_ORDER) {
+          for (const categoryId of Object.keys(migrated.ui.evaluation.phraseCatalog || DEFAULT_COMMENT_CATEGORIES)) {
             if (typeof period.selections[categoryId] !== "string") period.selections[categoryId] = "";
           }
           if (typeof period.observation !== "string") period.observation = "";
@@ -356,28 +403,48 @@ function ensureEvaluationUi() {
   if (!evalUi.activePeriodByClass || typeof evalUi.activePeriodByClass !== "object") {
     evalUi.activePeriodByClass = {};
   }
+  if (!evalUi.bulkCopyTargetByClass || typeof evalUi.bulkCopyTargetByClass !== "object") {
+    evalUi.bulkCopyTargetByClass = {};
+  }
+  if (!evalUi.phraseCatalog || typeof evalUi.phraseCatalog !== "object") {
+    evalUi.phraseCatalog = getDefaultCommentCategories();
+  }
+  if (!Array.isArray(evalUi.categoryOrder)) {
+    evalUi.categoryOrder = Object.keys(evalUi.phraseCatalog || {});
+  }
+  const validIds = new Set(Object.keys(evalUi.phraseCatalog || {}));
+  evalUi.categoryOrder = evalUi.categoryOrder.filter((categoryId) => validIds.has(categoryId));
+  for (const categoryId of validIds) {
+    if (!evalUi.categoryOrder.includes(categoryId)) evalUi.categoryOrder.push(categoryId);
+  }
   if (!COMMENT_LANGUAGE_MODES.includes(evalUi.commentLanguageMode)) {
     evalUi.commentLanguageMode = "bilingual";
   }
   return evalUi;
 }
 
+function getCommentCategories() {
+  const phraseCatalog = ensureEvaluationUi().phraseCatalog;
+  return cloneCommentCategories(phraseCatalog);
+}
+
 function ensureStudentEvaluation(student) {
   if (!student.evaluation || typeof student.evaluation !== "object") {
     student.evaluation = defaultStudentEvaluation();
   }
+  const categoryIds = getCommentCategoryOrder();
   if (!student.evaluation.periods || typeof student.evaluation.periods !== "object") {
     student.evaluation.periods = defaultStudentEvaluation().periods;
   }
   for (const periodId of EVALUATION_PERIODS) {
     if (!student.evaluation.periods[periodId] || typeof student.evaluation.periods[periodId] !== "object") {
-      student.evaluation.periods[periodId] = defaultStudentEvaluation().periods[periodId];
+      student.evaluation.periods[periodId] = makeBlankEvaluationPeriod(categoryIds);
     }
     const period = student.evaluation.periods[periodId];
     if (!period.selections || typeof period.selections !== "object") {
-      period.selections = defaultStudentEvaluation().periods[periodId].selections;
+      period.selections = makeBlankEvaluationPeriod(categoryIds).selections;
     }
-    for (const categoryId of COMMENT_CATEGORY_ORDER) {
+    for (const categoryId of categoryIds) {
       if (typeof period.selections[categoryId] !== "string") {
         period.selections[categoryId] = "";
       }
@@ -398,6 +465,37 @@ function getActiveEvaluationPeriodForSelectedClass() {
 function setActiveEvaluationPeriodForSelectedClass(periodId) {
   const evalUi = ensureEvaluationUi();
   evalUi.activePeriodByClass[selectedClassId] = EVALUATION_PERIODS.includes(periodId) ? periodId : "eval1";
+  const target = getBulkCopyTargetPeriodForSelectedClass();
+  if (target === evalUi.activePeriodByClass[selectedClassId]) {
+    setBulkCopyTargetPeriodForSelectedClass(getDefaultBulkCopyTarget(evalUi.activePeriodByClass[selectedClassId]));
+  }
+  saveState(state);
+}
+
+function getDefaultBulkCopyTarget(sourcePeriodId) {
+  const sourceIndex = EVALUATION_PERIODS.indexOf(sourcePeriodId);
+  if (sourceIndex >= 0 && sourceIndex < EVALUATION_PERIODS.length - 1) {
+    return EVALUATION_PERIODS[sourceIndex + 1];
+  }
+  return EVALUATION_PERIODS[Math.max(0, sourceIndex - 1)] || "eval1";
+}
+
+function getBulkCopyTargetPeriodForSelectedClass() {
+  const evalUi = ensureEvaluationUi();
+  const sourcePeriod = getActiveEvaluationPeriodForSelectedClass();
+  const current = evalUi.bulkCopyTargetByClass[selectedClassId];
+  if (current && current !== sourcePeriod && EVALUATION_PERIODS.includes(current)) return current;
+  const fallback = getDefaultBulkCopyTarget(sourcePeriod);
+  evalUi.bulkCopyTargetByClass[selectedClassId] = fallback;
+  return fallback;
+}
+
+function setBulkCopyTargetPeriodForSelectedClass(periodId) {
+  const evalUi = ensureEvaluationUi();
+  const sourcePeriod = getActiveEvaluationPeriodForSelectedClass();
+  const fallback = getDefaultBulkCopyTarget(sourcePeriod);
+  evalUi.bulkCopyTargetByClass[selectedClassId] =
+    periodId && periodId !== sourcePeriod && EVALUATION_PERIODS.includes(periodId) ? periodId : fallback;
   saveState(state);
 }
 
@@ -434,14 +532,16 @@ function setCommentLanguageMode(value) {
 function getActiveCategoryForSelectedClass() {
   const evalUi = ensureEvaluationUi();
   const current = evalUi.activeCategoryByClass[selectedClassId];
-  return COMMENT_CATEGORY_ORDER.includes(current) ? current : COMMENT_CATEGORY_ORDER[0];
+  const categoryIds = getCommentCategoryOrder();
+  return categoryIds.includes(current) ? current : categoryIds[0];
 }
 
 function setActiveCategoryForSelectedClass(categoryId) {
   const evalUi = ensureEvaluationUi();
-  evalUi.activeCategoryByClass[selectedClassId] = COMMENT_CATEGORY_ORDER.includes(categoryId)
+  const categoryIds = getCommentCategoryOrder();
+  evalUi.activeCategoryByClass[selectedClassId] = categoryIds.includes(categoryId)
     ? categoryId
-    : COMMENT_CATEGORY_ORDER[0];
+    : categoryIds[0];
 }
 
 function getSelectedStudentIdForSelectedClass() {
@@ -462,15 +562,16 @@ function normalizeCommentText(text) {
 }
 
 function findOptionById(categoryId, optionId) {
-  return COMMENT_CATEGORIES[categoryId]?.options.find((option) => option.id === optionId);
+  return getCommentCategories()[categoryId]?.options.find((option) => option.id === optionId);
 }
 
 function buildStudentComments(student, periodId = getActiveEvaluationPeriodForSelectedClass()) {
   const evaluation = getEvaluationPeriodData(student, periodId);
+  const categoryIds = getCommentCategoryOrder();
   const valParts = [];
   const esParts = [];
 
-  for (const categoryId of COMMENT_CATEGORY_ORDER) {
+  for (const categoryId of categoryIds) {
     const option = findOptionById(categoryId, evaluation.selections[categoryId]);
     if (!option) continue;
     valParts.push(option.val);
@@ -515,7 +616,7 @@ function syncStudentEvaluationComment(student, forceOverwrite = false, periodId 
 function isStudentCompleted(student) {
   const periodId = getActiveEvaluationPeriodForSelectedClass();
   const evaluation = getEvaluationPeriodData(student, periodId);
-  const hasSelection = COMMENT_CATEGORY_ORDER.some((categoryId) => Boolean(evaluation.selections[categoryId]));
+  const hasSelection = getCommentCategoryOrder().some((categoryId) => Boolean(evaluation.selections[categoryId]));
   return hasSelection || Boolean(normalizeCommentText(evaluation.comment));
 }
 
@@ -692,6 +793,10 @@ const closeImportBtn = /** @type {HTMLButtonElement} */ (el("closeImportBtn"));
 const exportBackupBtn = /** @type {HTMLButtonElement} */ (el("exportBackupBtn"));
 const importBackupFile = /** @type {HTMLInputElement} */ (el("importBackupFile"));
 const importBackupBtn = /** @type {HTMLButtonElement} */ (el("importBackupBtn"));
+const phraseEditors = /** @type {HTMLDivElement} */ (el("phraseEditors"));
+const addCategoryBtn = /** @type {HTMLButtonElement} */ (el("addCategoryBtn"));
+const savePhrasesBtn = /** @type {HTMLButtonElement} */ (el("savePhrasesBtn"));
+const resetPhrasesBtn = /** @type {HTMLButtonElement} */ (el("resetPhrasesBtn"));
 const timerDialog = /** @type {HTMLDialogElement} */ (el("timerDialog"));
 const closeTimerBtn = /** @type {HTMLButtonElement} */ (el("closeTimerBtn"));
 const timerStudentList = /** @type {HTMLUListElement} */ (el("timerStudentList"));
@@ -729,7 +834,10 @@ const evaluationPeriodSelect = /** @type {HTMLSelectElement} */ (el("evaluationP
 const evalObservation = /** @type {HTMLTextAreaElement} */ (el("evalObservation"));
 const evalComment = /** @type {HTMLTextAreaElement} */ (el("evalComment"));
 const commentLanguageModeSelect = /** @type {HTMLSelectElement} */ (el("commentLanguageMode"));
+const bulkCopyTargetPeriodSelect = /** @type {HTMLSelectElement} */ (el("bulkCopyTargetPeriod"));
+const copyPeriodToPeriodBtn = /** @type {HTMLButtonElement} */ (el("copyPeriodToPeriodBtn"));
 const copyFromPreviousBtn = /** @type {HTMLButtonElement} */ (el("copyFromPreviousBtn"));
+const copyToAllBtn = /** @type {HTMLButtonElement} */ (el("copyToAllBtn"));
 const copyCommentBtn = /** @type {HTMLButtonElement} */ (el("copyCommentBtn"));
 const copyNextBtn = /** @type {HTMLButtonElement} */ (el("copyNextBtn"));
 const saveEvaluationBtn = /** @type {HTMLButtonElement} */ (el("saveEvaluationBtn"));
@@ -817,6 +925,7 @@ function applyI18n() {
   if (classHistoryDialog.hasAttribute("open") || classHistoryDialog.open) {
     renderClassHistoryModal();
   }
+  renderPhraseEditors();
 
   document.dispatchEvent(new CustomEvent("i18n:change", { detail: { lang } }));
 }
@@ -837,6 +946,238 @@ function downloadTextFile(filename, content, mime) {
   a.click();
   a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function serializePhraseLines(categoryId) {
+  const category = getCommentCategories()[categoryId];
+  return (category?.options || [])
+    .map((option) => `${option.id} | ${option.val} | ${option.es}`)
+    .join("\n");
+}
+
+function renderPhraseEditors() {
+  const categories = getCommentCategories();
+  const categoryIds = getCommentCategoryOrder();
+  phraseEditors.innerHTML = "";
+
+  for (const categoryId of categoryIds) {
+    const category = categories[categoryId];
+    const card = document.createElement("div");
+    card.className = "configCard";
+    card.dataset.categoryId = categoryId;
+
+    const header = document.createElement("div");
+    header.className = "configCard__header";
+
+    const nameField = document.createElement("label");
+    nameField.className = "field field--grow";
+
+    const nameLabel = document.createElement("span");
+    nameLabel.className = "field__label";
+    nameLabel.textContent = t("config.phrases.categoryName");
+
+    const nameInput = document.createElement("input");
+    nameInput.className = "field__input";
+    nameInput.type = "text";
+    nameInput.value = category.label || categoryId;
+    nameInput.dataset.role = "category-label";
+
+    nameField.appendChild(nameLabel);
+    nameField.appendChild(nameInput);
+
+    const idField = document.createElement("label");
+    idField.className = "field";
+
+    const idLabel = document.createElement("span");
+    idLabel.className = "field__label";
+    idLabel.textContent = t("config.phrases.categoryId");
+
+    const idInput = document.createElement("input");
+    idInput.className = "field__input field__input--small";
+    idInput.type = "text";
+    idInput.value = categoryId;
+    idInput.dataset.role = "category-id";
+    idInput.disabled = true;
+
+    idField.appendChild(idLabel);
+    idField.appendChild(idInput);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn--secondary";
+    removeBtn.textContent = t("config.phrases.removeCategory");
+    removeBtn.disabled = categoryIds.length <= 1;
+    removeBtn.addEventListener("click", () => {
+      const nextCatalog = getCommentCategories();
+      delete nextCatalog[categoryId];
+      const evalUi = ensureEvaluationUi();
+      evalUi.phraseCatalog = cloneCommentCategories(nextCatalog);
+      evalUi.categoryOrder = getCommentCategoryOrder().filter((id) => id !== categoryId);
+      saveState(state);
+      renderPhraseEditors();
+      renderStudents();
+    });
+
+    const moveUpBtn = document.createElement("button");
+    moveUpBtn.type = "button";
+    moveUpBtn.className = "btn btn--secondary";
+    moveUpBtn.textContent = t("config.phrases.moveUp");
+    moveUpBtn.disabled = categoryIds.indexOf(categoryId) === 0;
+    moveUpBtn.addEventListener("click", () => {
+      movePhraseCategory(categoryId, -1);
+    });
+
+    const moveDownBtn = document.createElement("button");
+    moveDownBtn.type = "button";
+    moveDownBtn.className = "btn btn--secondary";
+    moveDownBtn.textContent = t("config.phrases.moveDown");
+    moveDownBtn.disabled = categoryIds.indexOf(categoryId) === categoryIds.length - 1;
+    moveDownBtn.addEventListener("click", () => {
+      movePhraseCategory(categoryId, 1);
+    });
+
+    header.appendChild(nameField);
+    header.appendChild(idField);
+    header.appendChild(moveUpBtn);
+    header.appendChild(moveDownBtn);
+    header.appendChild(removeBtn);
+
+    const textareaField = document.createElement("label");
+    textareaField.className = "field";
+
+    const textareaLabel = document.createElement("span");
+    textareaLabel.className = "field__label";
+    textareaLabel.textContent = t("config.phrases.lines");
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "field__input field__textarea";
+    textarea.rows = 7;
+    textarea.value = serializePhraseLines(categoryId);
+    textarea.placeholder = t("config.phrases.placeholder");
+    textarea.dataset.role = "category-lines";
+
+    textareaField.appendChild(textareaLabel);
+    textareaField.appendChild(textarea);
+
+    card.appendChild(header);
+    card.appendChild(textareaField);
+    phraseEditors.appendChild(card);
+  }
+}
+
+function parsePhraseEditorValue(text) {
+  const lines = String(text ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.map((line) => {
+    const parts = line.split("|").map((part) => part.trim());
+    if (parts.length < 3) throw new Error(t("config.phrases.error.format"));
+    const [id, val, es] = [parts[0], parts[1], parts.slice(2).join(" | ")];
+    if (!id || !val || !es) throw new Error(t("config.phrases.error.empty"));
+    return { id, val, es };
+  });
+}
+
+function saveCustomPhrases() {
+  const phraseCatalog = {};
+  const cards = Array.from(phraseEditors.querySelectorAll(".configCard"));
+  if (!cards.length) throw new Error(t("config.phrases.error.noCategories"));
+
+  for (const card of cards) {
+    if (!(card instanceof HTMLElement)) continue;
+    const idInput = /** @type {HTMLInputElement|null} */ (card.querySelector('[data-role="category-id"]'));
+    const labelInput = /** @type {HTMLInputElement|null} */ (card.querySelector('[data-role="category-label"]'));
+    const linesInput = /** @type {HTMLTextAreaElement|null} */ (card.querySelector('[data-role="category-lines"]'));
+    const categoryId = String(idInput?.value ?? "").trim();
+    const label = String(labelInput?.value ?? "").trim();
+    if (!categoryId || !label) throw new Error(t("config.phrases.error.categoryName"));
+    phraseCatalog[categoryId] = {
+      label,
+      options: parsePhraseEditorValue(linesInput?.value ?? ""),
+    };
+  }
+
+  const evalUi = ensureEvaluationUi();
+  evalUi.phraseCatalog = cloneCommentCategories(phraseCatalog);
+  evalUi.categoryOrder = cards
+    .map((card) => /** @type {HTMLInputElement|null} */ (card.querySelector('[data-role="category-id"]'))?.value ?? "")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+  saveState(state);
+  renderPhraseEditors();
+  renderStudents();
+  setTransientStatus(t("config.phrases.saved"));
+}
+
+function resetCustomPhrases() {
+  ensureEvaluationUi().phraseCatalog = getDefaultCommentCategories();
+  ensureEvaluationUi().categoryOrder = getDefaultCommentCategoryOrder();
+  saveState(state);
+  renderPhraseEditors();
+  renderStudents();
+  setTransientStatus(t("config.phrases.resetDone"));
+}
+
+function movePhraseCategory(categoryId, delta) {
+  const evalUi = ensureEvaluationUi();
+  const order = [...getCommentCategoryOrder()];
+  const index = order.indexOf(categoryId);
+  if (index < 0) return;
+  const nextIndex = index + delta;
+  if (nextIndex < 0 || nextIndex >= order.length) return;
+  const [moved] = order.splice(index, 1);
+  order.splice(nextIndex, 0, moved);
+  evalUi.categoryOrder = order;
+  saveState(state);
+  renderPhraseEditors();
+  renderStudents();
+}
+
+function slugifyCategoryId(text) {
+  return String(text ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function addPhraseCategory() {
+  const label = prompt(t("config.phrases.promptCategory"));
+  if (label === null) return;
+  const trimmed = label.trim();
+  if (!trimmed) {
+    setTransientStatus(t("config.phrases.error.categoryName"), 4000);
+    return;
+  }
+
+  let categoryId = slugifyCategoryId(trimmed);
+  if (!categoryId) {
+    setTransientStatus(t("config.phrases.error.categoryId"), 4000);
+    return;
+  }
+
+  const catalog = getCommentCategories();
+  let suffix = 2;
+  const baseId = categoryId;
+  while (catalog[categoryId]) {
+    categoryId = `${baseId}_${suffix}`;
+    suffix += 1;
+  }
+
+  catalog[categoryId] = {
+    label: trimmed,
+    options: [],
+  };
+
+  const evalUi = ensureEvaluationUi();
+  evalUi.phraseCatalog = cloneCommentCategories(catalog);
+  evalUi.categoryOrder = [...getCommentCategoryOrder(), categoryId];
+  saveState(state);
+  renderPhraseEditors();
+  setTransientStatus(t("config.phrases.categoryAdded"));
 }
 
 function exportBackup() {
@@ -1146,6 +1487,8 @@ function renderEvaluationPanel() {
   const students = cls.students;
   const selectedStudent = getSelectedStudent();
   const activePeriod = getActiveEvaluationPeriodForSelectedClass();
+  const categories = getCommentCategories();
+  const categoryIds = Object.keys(categories);
   const completedCount = students.filter((student) => isStudentCompleted(student)).length;
   const pendingCount = Math.max(0, students.length - completedCount);
   const progress = students.length ? Math.round((completedCount / students.length) * 100) : 0;
@@ -1155,6 +1498,17 @@ function renderEvaluationPanel() {
   completionFilterSelect.value = getCompletionFilterForSelectedClass();
   evaluationPeriodSelect.value = activePeriod;
   commentLanguageModeSelect.value = getCommentLanguageMode();
+  const bulkTargetPeriod = getBulkCopyTargetPeriodForSelectedClass();
+  bulkCopyTargetPeriodSelect.innerHTML = "";
+  for (const periodId of EVALUATION_PERIODS) {
+    if (periodId === activePeriod) continue;
+    const option = document.createElement("option");
+    option.value = periodId;
+    option.textContent = t(`eval.period.${periodId}`);
+    if (periodId === bulkTargetPeriod) option.selected = true;
+    bulkCopyTargetPeriodSelect.appendChild(option);
+  }
+  copyPeriodToPeriodBtn.disabled = students.length === 0;
 
   if (!selectedStudent) {
     evalCurrentName.textContent = t("eval.noStudents");
@@ -1165,8 +1519,11 @@ function renderEvaluationPanel() {
     evalCategories.innerHTML = "";
     evalObservation.value = "";
     evalComment.value = "";
+    bulkCopyTargetPeriodSelect.disabled = true;
     return;
   }
+
+  bulkCopyTargetPeriodSelect.disabled = false;
 
   syncStudentEvaluationComment(selectedStudent, false, activePeriod);
   const evaluation = getEvaluationPeriodData(selectedStudent, activePeriod);
@@ -1186,8 +1543,8 @@ function renderEvaluationPanel() {
   evalCategories.innerHTML = "";
   const activeCategory = getActiveCategoryForSelectedClass();
 
-  for (const categoryId of COMMENT_CATEGORY_ORDER) {
-    const category = COMMENT_CATEGORIES[categoryId];
+  for (const categoryId of categoryIds) {
+    const category = categories[categoryId];
     const section = document.createElement("section");
     section.className = "evalCategory";
     section.dataset.categoryId = categoryId;
@@ -1210,7 +1567,7 @@ function renderEvaluationPanel() {
 
     const badge = document.createElement("span");
     badge.className = "evalCategory__badge";
-    badge.textContent = `${COMMENT_CATEGORY_ORDER.indexOf(categoryId) + 1}/${COMMENT_CATEGORY_ORDER.length}`;
+    badge.textContent = `${categoryIds.indexOf(categoryId) + 1}/${categoryIds.length}`;
 
     header.appendChild(titleWrap);
     header.appendChild(badge);
@@ -1548,6 +1905,45 @@ function copyPreviousEvaluationToCurrent(student) {
   return true;
 }
 
+function copyCurrentEvaluationToAllVisible() {
+  const sourceStudent = getSelectedStudent();
+  if (!sourceStudent) return { copied: 0, skipped: 0 };
+
+  const activePeriod = getActiveEvaluationPeriodForSelectedClass();
+  const sourceData = cloneEvaluationPeriod(getEvaluationPeriodData(sourceStudent, activePeriod));
+  const visibleStudents = getFilteredStudentsForSelectedClass();
+
+  let copied = 0;
+  let skipped = 0;
+  for (const student of visibleStudents) {
+    if (student.id === sourceStudent.id) {
+      skipped += 1;
+      continue;
+    }
+    ensureStudentEvaluation(student).periods[activePeriod] = cloneEvaluationPeriod(sourceData);
+    syncStudentEvaluationComment(student, true, activePeriod);
+    copied += 1;
+  }
+
+  saveState(state);
+  renderStudents();
+  return { copied, skipped };
+}
+
+function copyEvaluationPeriodForWholeClass(sourcePeriodId, targetPeriodId) {
+  const cls = getSelectedClass();
+  let copied = 0;
+  for (const student of cls.students) {
+    const sourceData = cloneEvaluationPeriod(getEvaluationPeriodData(student, sourcePeriodId));
+    ensureStudentEvaluation(student).periods[targetPeriodId] = sourceData;
+    syncStudentEvaluationComment(student, true, targetPeriodId);
+    copied += 1;
+  }
+  saveState(state);
+  renderStudents();
+  return { copied };
+}
+
 async function copyTextToClipboard(text) {
   const value = String(text ?? "");
   if (!value) return false;
@@ -1584,14 +1980,13 @@ async function copyCurrentComment(moveNext = false) {
 }
 
 function exportEvaluationsToCsv() {
+  const categoryIds = getCommentCategoryOrder();
   /** @type {string[][]} */
   const rows = [[
     "clase",
     "nombre",
     "evaluacion",
-    "actitud",
-    "trabajo",
-    "progreso",
+    ...categoryIds,
     "observacion_libre",
     "comentario_valenciano",
     "comentario_castellano",
@@ -1607,15 +2002,13 @@ function exportEvaluationsToCsv() {
         syncStudentEvaluationComment(student, false, periodId);
         const evaluation = getEvaluationPeriodData(student, periodId);
         const generated = buildStudentComments(student, periodId);
-        const hasSelection = COMMENT_CATEGORY_ORDER.some((categoryId) => Boolean(evaluation.selections[categoryId]));
+        const hasSelection = getCommentCategoryOrder().some((categoryId) => Boolean(evaluation.selections[categoryId]));
         const isCompleted = hasSelection || Boolean(normalizeCommentText(evaluation.comment));
         rows.push([
           cls.name,
           student.name,
           t(`eval.period.${periodId}`),
-          evaluation.selections.actitud || "",
-          evaluation.selections.trabajo || "",
-          evaluation.selections.progreso || "",
+          ...categoryIds.map((categoryId) => evaluation.selections[categoryId] || ""),
           evaluation.observation || "",
           generated.valenciano,
           generated.castellano,
@@ -1871,6 +2264,7 @@ openImportBtn.addEventListener("click", () => {
   // Sincroniza valores de configuración al abrir
   negMinutesPerPointInput.value = String(getNegMinutesPerPoint());
   posMinutesPerPointInput.value = String(getPosMinutesPerPoint());
+  renderPhraseEditors();
 
   if (typeof importDialog.showModal === "function") {
     importDialog.showModal();
@@ -1939,6 +2333,11 @@ completionFilterSelect.addEventListener("change", () => {
 evaluationPeriodSelect.addEventListener("change", () => {
   setActiveEvaluationPeriodForSelectedClass(evaluationPeriodSelect.value);
   renderStudents();
+});
+
+bulkCopyTargetPeriodSelect.addEventListener("change", () => {
+  setBulkCopyTargetPeriodForSelectedClass(bulkCopyTargetPeriodSelect.value);
+  renderEvaluationPanel();
 });
 
 clearFilterBtn.addEventListener("click", () => {
@@ -2033,6 +2432,22 @@ resetClassBtn.addEventListener("click", () => {
   resetMarksForSelectedClass();
 });
 
+savePhrasesBtn.addEventListener("click", () => {
+  try {
+    saveCustomPhrases();
+  } catch (error) {
+    setTransientStatus(error instanceof Error ? error.message : t("config.phrases.error.generic"), 4000);
+  }
+});
+
+resetPhrasesBtn.addEventListener("click", () => {
+  resetCustomPhrases();
+});
+
+addCategoryBtn.addEventListener("click", () => {
+  addPhraseCategory();
+});
+
 evalObservation.addEventListener("input", () => {
   const student = getSelectedStudent();
   if (!student) return;
@@ -2074,6 +2489,51 @@ copyFromPreviousBtn.addEventListener("click", () => {
   saveState(state);
   renderStudents();
   setTransientStatus(t(copied ? "eval.status.copiedPrevious" : "eval.status.noPrevious"));
+});
+
+copyPeriodToPeriodBtn.addEventListener("click", () => {
+  const cls = getSelectedClass();
+  if (!cls.students.length) return;
+  const sourcePeriod = getActiveEvaluationPeriodForSelectedClass();
+  const targetPeriod = getBulkCopyTargetPeriodForSelectedClass();
+  if (!targetPeriod || targetPeriod === sourcePeriod) return;
+
+  const ok = confirm(t("eval.confirm.copyPeriodToPeriod", {
+    source: t(`eval.period.${sourcePeriod}`),
+    target: t(`eval.period.${targetPeriod}`),
+    className: cls.name,
+    count: cls.students.length,
+  }));
+  if (!ok) return;
+
+  const result = copyEvaluationPeriodForWholeClass(sourcePeriod, targetPeriod);
+  setTransientStatus(t("eval.status.copiedPeriodToPeriod", {
+    source: t(`eval.period.${sourcePeriod}`),
+    target: t(`eval.period.${targetPeriod}`),
+    count: result.copied,
+  }), 3500);
+});
+
+copyToAllBtn.addEventListener("click", () => {
+  const sourceStudent = getSelectedStudent();
+  if (!sourceStudent) return;
+  const activePeriod = getActiveEvaluationPeriodForSelectedClass();
+  const visibleStudents = getFilteredStudentsForSelectedClass();
+  const targets = Math.max(0, visibleStudents.length - 1);
+  if (targets <= 0) {
+    setTransientStatus(t("eval.status.noTargets"), 3000);
+    return;
+  }
+
+  const ok = confirm(t("eval.confirm.copyToAll", {
+    period: t(`eval.period.${activePeriod}`),
+    source: sourceStudent.name,
+    count: targets,
+  }));
+  if (!ok) return;
+
+  const result = copyCurrentEvaluationToAllVisible();
+  setTransientStatus(t("eval.status.copiedToAll", { count: result.copied }), 3500);
 });
 
 saveEvaluationBtn.addEventListener("click", () => {
@@ -2205,10 +2665,11 @@ document.addEventListener("keydown", async (event) => {
 
   if (event.key === "Tab" && !isEditableField) {
     event.preventDefault();
-    const currentIndex = COMMENT_CATEGORY_ORDER.indexOf(getActiveCategoryForSelectedClass());
+    const categoryIds = getCommentCategoryOrder();
+    const currentIndex = categoryIds.indexOf(getActiveCategoryForSelectedClass());
     const delta = event.shiftKey ? -1 : 1;
-    const nextIndex = (currentIndex + delta + COMMENT_CATEGORY_ORDER.length) % COMMENT_CATEGORY_ORDER.length;
-    setActiveCategoryForSelectedClass(COMMENT_CATEGORY_ORDER[nextIndex]);
+    const nextIndex = (currentIndex + delta + categoryIds.length) % categoryIds.length;
+    setActiveCategoryForSelectedClass(categoryIds[nextIndex]);
     saveState(state);
     renderEvaluationPanel();
     focusActiveCategoryButton();
@@ -2217,13 +2678,13 @@ document.addEventListener("keydown", async (event) => {
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && /^[1-9]$/.test(event.key) && !isEditableField) {
     const categoryId = getActiveCategoryForSelectedClass();
-    const category = COMMENT_CATEGORIES[categoryId];
+    const category = getCommentCategories()[categoryId];
     const optionIndex = Number(event.key) - 1;
     const option = category?.options[optionIndex];
     const student = getSelectedStudent();
     if (!option || !student) return;
     event.preventDefault();
-    const evaluation = ensureStudentEvaluation(student);
+    const evaluation = getEvaluationPeriodData(student);
     evaluation.selections[categoryId] = evaluation.selections[categoryId] === option.id ? "" : option.id;
     syncStudentEvaluationComment(student, true);
     saveState(state);
@@ -2967,11 +3428,12 @@ function initColumnVisibility() {
 
   const leftBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("toggleLeftColBtn"));
   const midBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("toggleMidColBtn"));
+  const evalBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("toggleEvalPanelBtn"));
   const rightBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById("toggleRightColBtn"));
-  if (!leftBtn || !midBtn || !rightBtn) return;
+  if (!leftBtn || !midBtn || !evalBtn || !rightBtn) return;
 
-  /** @type {{ left: boolean, mid: boolean, right: boolean }} */
-  let vis = { left: true, mid: true, right: true };
+  /** @type {{ left: boolean, mid: boolean, eval: boolean, mode: boolean }} */
+  let vis = { left: true, mid: true, eval: true, mode: true };
 
   function load() {
     const raw = localStorage.getItem(COLVIS_KEY);
@@ -2981,7 +3443,12 @@ function initColumnVisibility() {
       if (!parsed || typeof parsed !== "object") return;
       if (typeof parsed.left === "boolean") vis.left = parsed.left;
       if (typeof parsed.mid === "boolean") vis.mid = parsed.mid;
-      if (typeof parsed.right === "boolean") vis.right = parsed.right;
+      if (typeof parsed.eval === "boolean") vis.eval = parsed.eval;
+      if (typeof parsed.mode === "boolean") vis.mode = parsed.mode;
+      if (typeof parsed.right === "boolean" && typeof parsed.eval !== "boolean" && typeof parsed.mode !== "boolean") {
+        vis.eval = parsed.right;
+        vis.mode = parsed.right;
+      }
     } catch {
       // ignore
     }
@@ -2992,22 +3459,27 @@ function initColumnVisibility() {
   }
 
   function apply() {
+    const rightVisible = vis.eval || vis.mode;
     split.classList.toggle("split--hide-left", !vis.left);
     split.classList.toggle("split--hide-mid", !vis.mid);
-    split.classList.toggle("split--hide-right", !vis.right);
+    split.classList.toggle("split--hide-right", !rightVisible);
+    split.classList.toggle("split--hide-eval", !vis.eval);
+    split.classList.toggle("split--hide-mode", !vis.mode);
 
     leftBtn.setAttribute("aria-pressed", String(vis.left));
     midBtn.setAttribute("aria-pressed", String(vis.mid));
-    rightBtn.setAttribute("aria-pressed", String(vis.right));
+    evalBtn.setAttribute("aria-pressed", String(vis.eval));
+    rightBtn.setAttribute("aria-pressed", String(vis.mode));
 
     // Feedback visual reutilizando estilos existentes
     leftBtn.classList.toggle("btn--secondary", vis.left);
     midBtn.classList.toggle("btn--secondary", vis.mid);
-    rightBtn.classList.toggle("btn--secondary", vis.right);
+    evalBtn.classList.toggle("btn--secondary", vis.eval);
+    rightBtn.classList.toggle("btn--secondary", vis.mode);
   }
 
   function ensureAtLeastOneVisible() {
-    if (vis.left || vis.mid || vis.right) return true;
+    if (vis.left || vis.mid || vis.eval || vis.mode) return true;
     // Evita dejar todo oculto.
     vis.mid = true;
     return false;
@@ -3025,8 +3497,14 @@ function initColumnVisibility() {
     apply();
     save();
   });
+  evalBtn.addEventListener("click", () => {
+    vis.eval = !vis.eval;
+    ensureAtLeastOneVisible();
+    apply();
+    save();
+  });
   rightBtn.addEventListener("click", () => {
-    vis.right = !vis.right;
+    vis.mode = !vis.mode;
     ensureAtLeastOneVisible();
     apply();
     save();

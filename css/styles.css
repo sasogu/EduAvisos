@@ -84,6 +84,11 @@ body {
   display: none;
 }
 
+.split--hide-eval #evaluationPanel,
+.split--hide-mode #modePanel {
+  display: none;
+}
+
 .split--hide-left .split__resizer[data-resizer="lm"],
 .split--hide-mid .split__resizer[data-resizer="lm"],
 .split--hide-mid .split__resizer[data-resizer="mr"],
@@ -226,7 +231,7 @@ body {
 
 .evalToolbar {
   display: grid;
-  grid-template-columns: minmax(180px, auto) minmax(220px, 1fr) repeat(4, auto);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   align-items: end;
 }
@@ -715,7 +720,29 @@ body {
   margin: 0 0 12px 0;
 }
 
+.config__stack {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .config__row {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.configCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.16);
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.configCard__header {
   display: flex;
   gap: 12px;
   align-items: end;
