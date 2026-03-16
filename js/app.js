@@ -818,6 +818,7 @@ const classSelect = /** @type {HTMLSelectElement} */ (el("classSelect"));
 const classNameInput = /** @type {HTMLInputElement} */ (el("className"));
 const saveClassNameBtn = /** @type {HTMLButtonElement} */ (el("saveClassNameBtn"));
 const resetClassBtn = /** @type {HTMLButtonElement} */ (el("resetClassBtn"));
+const quickExportBtn = /** @type {HTMLButtonElement} */ (el("quickExportBtn"));
 const timerPlayBtn = /** @type {HTMLButtonElement} */ (el("timerPlayBtn"));
 const timerPauseBtn = /** @type {HTMLButtonElement} */ (el("timerPauseBtn"));
 const importTextarea = /** @type {HTMLTextAreaElement} */ (el("importTextarea"));
@@ -2607,6 +2608,14 @@ resetEvaluationBtn.addEventListener("click", () => {
   if (!student) return;
   resetEvaluationForStudent(student);
   persistEvaluationUi();
+});
+
+quickExportBtn.addEventListener("click", () => {
+  try {
+    exportBackup();
+  } catch (e) {
+    setTransientStatus(e instanceof Error ? e.message : t("error.export"), 4000);
+  }
 });
 
 exportCsvBtn.addEventListener("click", () => {
