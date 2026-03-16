@@ -573,6 +573,28 @@ function findOptionById(categoryId, optionId) {
   return getCommentCategories()[categoryId]?.options.find((option) => option.id === optionId);
 }
 
+function getFormattedStudentFirstName(studentName) {
+  const firstName = String(studentName ?? "").trim().split(/\s+/)[0] || "";
+  if (!firstName) return "";
+  const lower = firstName.toLocaleLowerCase();
+  return lower.charAt(0).toLocaleUpperCase() + lower.slice(1);
+}
+
+function lowercaseSentenceStart(text) {
+  return String(text ?? "").replace(/^([^A-Za-zÀ-ÖØ-Þà-öø-ÿ]*)([A-Za-zÀ-ÖØ-ÞÀ-ß])/u, (match, prefix, letter) => {
+    void match;
+    return `${prefix}${letter.toLocaleLowerCase()}`;
+  });
+}
+
+function prependStudentFirstName(text, studentName) {
+  const normalized = normalizeCommentText(text);
+  if (!normalized) return "";
+  const firstName = getFormattedStudentFirstName(studentName);
+  if (!firstName) return normalized;
+  return normalizeCommentText(`${firstName} ${lowercaseSentenceStart(normalized)}`);
+}
+
 function buildStudentComments(student, periodId = getActiveEvaluationPeriodForSelectedClass()) {
   const evaluation = getEvaluationPeriodData(student, periodId);
   const categoryIds = getCommentCategoryOrder();
@@ -591,8 +613,8 @@ function buildStudentComments(student, periodId = getActiveEvaluationPeriodForSe
     esParts.push(evaluation.observation.trim());
   }
 
-  const valenciano = normalizeCommentText(valParts.join(" "));
-  const castellano = normalizeCommentText(esParts.join(" "));
+  const valenciano = prependStudentFirstName(valParts.join(" "), student.name);
+  const castellano = prependStudentFirstName(esParts.join(" "), student.name);
   const mode = getCommentLanguageMode();
 
   let finalComment = "";
